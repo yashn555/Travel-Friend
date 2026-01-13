@@ -2,24 +2,24 @@ const mongoose = require('mongoose');
 
 const connectDatabase = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-    
-    // Handle connection events
+    if (!process.env.MONGO_URI) {
+      throw new Error('MONGO_URI is not defined in .env file');
+    }
+
+    const conn = await mongoose.connect(process.env.MONGO_URI);
+
+    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+
     mongoose.connection.on('error', (err) => {
-      console.error(`MongoDB connection error: ${err}`);
+      console.error('MongoDB runtime error:', err);
     });
-    
+
     mongoose.connection.on('disconnected', () => {
-      console.log('MongoDB disconnected');
+      console.log('⚠ MongoDB disconnected');
     });
-    
+
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    console.error(`❌ MongoDB connection error: ${error.message}`);
     process.exit(1);
   }
 };

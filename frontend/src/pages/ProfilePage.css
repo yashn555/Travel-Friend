@@ -1,0 +1,78 @@
+/* ProfilePage.css */
+
+/* Container */
+.max-w-3xl {
+  background-color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-top: 2rem;
+  transition: all 0.3s ease;
+}
+
+/* Headings */
+h1 {
+  color: #1f2937; /* Tailwind slate-800 */
+}
+
+/* Input fields */
+input,
+textarea {
+  border: 1px solid #d1d5db; /* Tailwind gray-300 */
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: #3b82f6; /* Tailwind blue-500 */
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+/* Profile image container */
+.flex.justify-center.relative {
+  position: relative;
+}
+
+.flex.justify-center.relative img {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.flex.justify-center.relative img:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Camera icon label */
+label.absolute {
+  background-color: #3b82f6;
+  color: #ffffff;
+  padding: 0.5rem;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+label.absolute:hover {
+  background-color: #2563eb;
+  transform: scale(1.1);
+}
+
+/* Checkbox labels */
+input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: #3b82f6;
+}
+
+/* Submit button */
+button {
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+button:hover {
+  background-color: #2563eb;
+  transform: translateY(-2px);
+}

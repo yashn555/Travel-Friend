@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import { toast } from 'react-toastify';
 import Button from '../../components/common/Button';
 import { verifyOTP, resendOTP } from '../../services/authService';
-import { login } from '../../redux/slices/authSlice';
+import { loginAsync } from '../../redux/slices/authSlice';
 import { FaEnvelope, FaClock, FaRedo, FaCheckCircle } from 'react-icons/fa';
 
 const VerifyOTPPage = () => {
@@ -121,7 +121,7 @@ const VerifyOTPPage = () => {
         setVerificationStatus('success');
         toast.success('Account verified successfully!');
         
-        dispatch(login({
+        dispatch(loginAsync({
           token: result.token,
           user: result.user
         }));

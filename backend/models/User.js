@@ -40,10 +40,64 @@ const UserSchema = new mongoose.Schema({
     select: false
   },
   
+  profileImage: {
+    type: String,
+    default: 'default-profile.jpg'
+  },
+  
+  bio: {
+    type: String,
+    maxlength: [500, 'Bio cannot exceed 500 characters'],
+    default: ''
+  },
+  
+  travelPreferences: {
+    adventure: { type: Boolean, default: false },
+    luxury: { type: Boolean, default: false },
+    budget: { type: Boolean, default: false },
+    solo: { type: Boolean, default: false },
+    group: { type: Boolean, default: false },
+    beach: { type: Boolean, default: false },
+    mountain: { type: Boolean, default: false },
+    cultural: { type: Boolean, default: false }
+  },
+  
+  isAnonymous: {
+    type: Boolean,
+    default: false
+  },
+  
   isVerified: {
     type: Boolean,
     default: false
   },
+  
+  rating: {
+    type: Number,
+    min: [1, 'Rating must be at least 1'],
+    max: [5, 'Rating cannot exceed 5'],
+    default: 4.5
+  },
+  
+  pastTrips: [{
+    destination: String,
+    startDate: Date,
+    endDate: Date,
+    notes: String,
+    rating: Number
+  }],
+  
+  notifications: [{
+    type: {
+      type: String,
+      enum: ['join_request', 'trip_update', 'message', 'system'],
+      required: true
+    },
+    title: String,
+    message: String,
+    read: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now }
+  }],
   
   otp: {
     code: String,
@@ -67,18 +121,6 @@ const UserSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
-});
-
-// Remove any pre-existing indexes that might cause issues
-UserSchema.pre('save', async function(next) {
-  // Clean up any undefined or null values
-  if (this.email === undefined || this.email === null) {
-    return next(new Error('Email is required'));
-  }
-  if (this.mobile === undefined || this.mobile === null) {
-    return next(new Error('Mobile is required'));
-  }
-  next();
 });
 
 // Encrypt password before saving
@@ -105,10 +147,6 @@ UserSchema.methods.comparePassword = async function(enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// In backend/models/User.js, add these methods:
-
-// In your User model, add these methods:
-
 // Generate OTP method
 UserSchema.methods.generateOTP = function() {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -119,61 +157,38 @@ UserSchema.methods.generateOTP = function() {
     expiresAt: expiresAt
   };
   
-  console.log(`📋 User OTP Generated: ${otp} for ${this.email}`);
-  console.log(`⏰ OTP Expires: ${expiresAt.toLocaleTimeString()}`);
-  
   return otp;
 };
 
 // Check if OTP is valid
-UserSchema.methods.isOTPValid = function(enteredOtp) {
-  console.log(`🔍 Validating OTP for ${this.email}`);
-  console.log(`   Entered OTP: ${enteredOtp}`);
-  console.log(`   Stored OTP: ${this.otp?.code || 'No OTP'}`);
-  console.log(`   Expires At: ${this.otp?.expiresAt || 'No expiry'}`);
-  
+UserSchema.methods.isOTPValid = function(otp) {
   if (!this.otp || !this.otp.code || !this.otp.expiresAt) {
-    console.log('❌ No OTP found for user');
     return false;
   }
   
   const now = new Date();
-  const expiresAt = new Date(this.otp.expiresAt);
-  
-  const isCodeValid = this.otp.code === enteredOtp;
-  const isNotExpired = expiresAt > now;
-  
-  console.log(`   Code Valid: ${isCodeValid}`);
-  console.log(`   Not Expired: ${isNotExpired}`);
-  console.log(`   Current Time: ${now.toLocaleTimeString()}`);
-  console.log(`   Expiry Time: ${expiresAt.toLocaleTimeString()}`);
-  
-  return isCodeValid && isNotExpired;
+  return this.otp.code === otp && this.otp.expiresAt > now;
 };
 
 // Clear OTP after verification
 UserSchema.methods.clearOTP = function() {
-  console.log(`🧹 Clearing OTP for ${this.email}`);
   this.otp = undefined;
 };
 
-// Drop problematic indexes before creating new ones
-UserSchema.pre('init', async function(next) {
-  try {
-    const collection = mongoose.connection.collection('users');
-    const indexes = await collection.indexes();
-    
-    // Check for problematic indexes
-    for (const index of indexes) {
-      if (index.name === 'username_1' || index.key.username) {
-        console.log('⚠️ Removing problematic index:', index.name);
-        await collection.dropIndex(index.name);
-      }
-    }
-  } catch (error) {
-    console.log('No problematic indexes found or could not remove them');
+// Add notification
+UserSchema.methods.addNotification = function(type, title, message) {
+  this.notifications.unshift({
+    type,
+    title,
+    message,
+    read: false,
+    createdAt: new Date()
+  });
+  
+  // Keep only last 20 notifications
+  if (this.notifications.length > 20) {
+    this.notifications = this.notifications.slice(0, 20);
   }
-  next();
-});
+};
 
 module.exports = mongoose.model('User', UserSchema);

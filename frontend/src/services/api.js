@@ -1,57 +1,41 @@
 import axios from 'axios';
-import store from '../redux/store';
-import { logout } from '../redux/slices/authSlice';
 
-// Create axios instance
+const API_URL = 'http://localhost:5000/api';
+
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: true, // Important for cookies
+  baseURL: API_URL,
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor to add token
+// Attach token to all requests
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor to handle errors
-api.interceptors.response.use(
-  (response) => {
-    return response.data;
-  },
-  (error) => {
-    if (error.response) {
-      // Handle 401 Unauthorized
-      if (error.response.status === 401) {
-        store.dispatch(logout());
-        window.location.href = '/login';
-      }
-      
-      const errorMessage = error.response.data?.message || 
-                          error.response.data?.errors?.[0]?.msg || 
-                          error.response.data?.error ||
-                          'Something went wrong';
-      
-      return Promise.reject(new Error(errorMessage));
-    }
-    
-    if (error.request) {
-      return Promise.reject(new Error('Network error. Please check your connection.'));
-    }
-    
-    return Promise.reject(error);
-  }
-);
+// ===== AUTH =====
+export const registerUser = (data) => api.post('/auth/register', data).then(res => res.data);
+export const verifyUserOTP = (data) => api.post('/auth/verify-otp', data).then(res => res.data);
+export const loginUser = (credentials) => api.post('/auth/login', credentials).then(res => res.data);
+export const getCurrentUser = () => api.get('/auth/me').then(res => res.data);
+export const logoutUser = () => api.get('/auth/logout').then(res => res.data);
+
+// ===== DASHBOARD =====
+export const getDashboardData = () => api.get('/dashboard').then(res => res.data);
+export const searchGroups = (filters) => api.get('/dashboard/groups', { params: filters }).then(res => res.data);
+export const requestToJoinGroup = (groupId) => api.post(`/dashboard/groups/${groupId}/join`).then(res => res.data);
+
+// ===== PROFILE =====
+export const getProfile = () => api.get('/profile').then(res => res.data);
+export const updateProfile = (data) => api.put('/profile', data).then(res => res.data);
+export const uploadProfileImage = (imageUrl) => api.post('/profile/upload-image', { imageUrl }).then(res => res.data);
+
+// ===== GROUP =====
+export const createGroup = (data) => api.post('/groups/create', data).then(res => res.data);
+export const getUserGroups = () => api.get('/groups/my-groups').then(res => res.data);
 
 export default api;
