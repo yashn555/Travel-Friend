@@ -107,6 +107,8 @@ UserSchema.methods.comparePassword = async function(enteredPassword) {
 
 // In backend/models/User.js, add these methods:
 
+// In your User model, add these methods:
+
 // Generate OTP method
 UserSchema.methods.generateOTP = function() {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -117,24 +119,41 @@ UserSchema.methods.generateOTP = function() {
     expiresAt: expiresAt
   };
   
+  console.log(`📋 User OTP Generated: ${otp} for ${this.email}`);
+  console.log(`⏰ OTP Expires: ${expiresAt.toLocaleTimeString()}`);
+  
   return otp;
 };
 
 // Check if OTP is valid
-UserSchema.methods.isOTPValid = function(otp) {
+UserSchema.methods.isOTPValid = function(enteredOtp) {
+  console.log(`🔍 Validating OTP for ${this.email}`);
+  console.log(`   Entered OTP: ${enteredOtp}`);
+  console.log(`   Stored OTP: ${this.otp?.code || 'No OTP'}`);
+  console.log(`   Expires At: ${this.otp?.expiresAt || 'No expiry'}`);
+  
   if (!this.otp || !this.otp.code || !this.otp.expiresAt) {
+    console.log('❌ No OTP found for user');
     return false;
   }
   
   const now = new Date();
-  const isCodeValid = this.otp.code === otp;
-  const isNotExpired = this.otp.expiresAt > now;
+  const expiresAt = new Date(this.otp.expiresAt);
+  
+  const isCodeValid = this.otp.code === enteredOtp;
+  const isNotExpired = expiresAt > now;
+  
+  console.log(`   Code Valid: ${isCodeValid}`);
+  console.log(`   Not Expired: ${isNotExpired}`);
+  console.log(`   Current Time: ${now.toLocaleTimeString()}`);
+  console.log(`   Expiry Time: ${expiresAt.toLocaleTimeString()}`);
   
   return isCodeValid && isNotExpired;
 };
 
 // Clear OTP after verification
 UserSchema.methods.clearOTP = function() {
+  console.log(`🧹 Clearing OTP for ${this.email}`);
   this.otp = undefined;
 };
 
