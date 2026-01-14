@@ -29,13 +29,21 @@ export const getDashboardData = () => api.get('/dashboard').then(res => res.data
 export const searchGroups = (filters) => api.get('/dashboard/groups', { params: filters }).then(res => res.data);
 export const requestToJoinGroup = (groupId) => api.post(`/dashboard/groups/${groupId}/join`).then(res => res.data);
 
+// ===== GROUP =====
+export const createGroup = (data) => api.post('/groups/create', data).then(res => res.data);
+export const getUserGroups = () => api.get('/groups/my-groups').then(res => res.data);
+export const getGroupDetails = (groupId) => api.get(`/groups/${groupId}`).then(res => res.data);
+export const joinGroupRequest = (groupId, message) => api.post('/groups/join-request', { groupId, message }).then(res => res.data);
+export const getGroupRequests = (groupId) => api.get(`/groups/${groupId}/requests`).then(res => res.data);
+export const handleGroupRequest = (groupId, requestId, action) => api.put('/groups/handle-request', { groupId, requestId, action }).then(res => res.data);
+export const getAllGroups = () => api.get('/groups/all-groups').then(res => res.data);
+
 // ===== PROFILE =====
 export const getProfile = () => api.get('/profile').then(res => res.data);
 export const updateProfile = (data) => api.put('/profile', data).then(res => res.data);
 export const uploadProfileImage = (imageUrl) => api.post('/profile/upload-image', { imageUrl }).then(res => res.data);
-
-// ===== GROUP =====
-export const createGroup = (data) => api.post('/groups/create', data).then(res => res.data);
-export const getUserGroups = () => api.get('/groups/my-groups').then(res => res.data);
-
+// ===== CHAT =====
+export const getGroupChat = (groupId) => api.get(`/chat/group/${groupId}`).then(res => res.data);
+export const sendChatMessage = (groupId, text) => api.post(`/chat/group/${groupId}/message`, { text }).then(res => res.data);
+export const getMyChats = () => api.get('/chat/my-chats').then(res => res.data);
 export default api;

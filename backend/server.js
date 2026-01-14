@@ -5,6 +5,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const authRoutes = require('./routes/authRoutes');
+const chatRoutes = require('./routes/chatRoutes');
+
 
 // Initialize express
 const app = express();
@@ -16,6 +18,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -30,7 +33,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/groups', groupRoutes);
-
+app.use('/api/chat', chatRoutes);
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({

@@ -1,13 +1,21 @@
 const express = require('express');
 const router = express.Router();
+const groupController = require('../controllers/groupController');
 const auth = require('../middleware/authMiddleware');
-const controller = require('../controllers/groupController');
 
+// All routes require authentication
 router.use(auth.protect);
 
-router.post('/create', controller.createGroup);
-router.post('/request-join', controller.requestJoinGroup);
-router.post('/handle-request', controller.handleJoinRequest);
-router.get('/my-groups', controller.getUserGroups);
+// Group CRUD operations
+router.post('/create', groupController.createGroup);
+router.get('/all-groups', groupController.getAllGroups);
+router.get('/my-groups', groupController.getMyGroups);
+router.get('/:groupId', groupController.getGroupById); // Add this route
+
+// Join request operations
+router.post('/join-request', groupController.requestJoinGroup);
+router.get('/:groupId/requests', groupController.getJoinRequests);
+router.put('/handle-request', groupController.handleJoinRequest);
+router.get('/:groupId/requests', groupController.getJoinRequestsByGroup);
 
 module.exports = router;

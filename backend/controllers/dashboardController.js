@@ -9,95 +9,86 @@ exports.getDashboard = async (req, res) => {
   try {
     console.log('📊 Fetching dashboard data for user:', req.user.id);
     
-    // Fetch active travel groups (excluding those created by current user)
+    // 🔥 FIX: Remove status filter since it doesn't exist initially
     const groups = await Group.find({
-      createdBy: { $ne: req.user.id },
-      status: { $in: ['planning', 'confirmed'] },
       endDate: { $gte: new Date() }
     })
     .populate('createdBy', 'name profileImage')
-    .select('-joinRequests')
+    .populate('currentMembers.user', 'name profileImage')
+    .populate('joinRequests.user', 'name profileImage')
     .sort({ createdAt: -1 })
     .limit(10);
     
-    // Fetch verified agencies
-    const agencies = await Agency.find({ verified: true })
-      .sort({ rating: -1, featured: -1 })
-      .limit(6);
+    console.log(`📝 Found ${groups.length} groups in database`);
     
-    // Fetch user notifications
-    const user = await User.findById(req.user.id).select('notifications');
-    
-    // Get user's joined groups
+    // Fetch user's groups for myGroups section
     const userGroups = await Group.find({
-      'currentMembers.user': req.user.id,
-      'currentMembers.status': 'approved'
+      'currentMembers.user': req.user.id
     })
-    .select('destination startDate endDate status')
+    .select('destination startDate endDate')
     .sort({ startDate: 1 })
     .limit(5);
     
     // Format response
     const dashboardData = {
       success: true,
-      stats: {
-        totalGroups: groups.length,
-        availableTrips: groups.filter(g => !g.isFull).length,
-        verifiedAgencies: agencies.length,
-        unreadNotifications: user.notifications.filter(n => !n.read).length
-      },
-      groups: groups.map(group => ({
-        id: group._id,
-        destination: group.destination,
-        description: group.description,
-        startDate: group.startDate,
-        endDate: group.endDate,
-        duration: Math.ceil((group.endDate - group.startDate) / (1000 * 60 * 60 * 24)),
-        budget: group.budget,
-        maxMembers: group.maxMembers,
-        currentMembers: group.currentMembers.filter(m => m.status === 'approved').length,
-        availableSlots: group.availableSlots,
-        isFull: group.isFull,
-        groupType: group.groupType,
-        status: group.status,
-        tags: group.tags,
-        createdBy: {
-          id: group.createdBy._id,
-          name: group.groupType === 'anonymous' ? 'Anonymous Traveler' : group.createdBy.name,
-          profileImage: group.groupType === 'anonymous' ? 'anonymous-profile.jpg' : group.createdBy.profileImage
-        },
-        createdAt: group.createdAt
-      })),
-      agencies: agencies.map(agency => ({
-        id: agency._id,
-        name: agency.name,
-        description: agency.description,
-        logo: agency.logo,
-        website: agency.website,
-        contactEmail: agency.contactEmail,
-        contactPhone: agency.contactPhone,
-        rating: agency.rating,
-        specialties: agency.specialties,
-        featured: agency.featured
-      })),
-      notifications: user.notifications.slice(0, 5).map(notification => ({
-        id: notification._id,
-        type: notification.type,
-        title: notification.title,
-        message: notification.message,
-        read: notification.read,
-        createdAt: notification.createdAt
-      })),
-      userTrips: userGroups.map(trip => ({
+      groups: groups.map(group => {
+        const approvedMembers = group.currentMembers.filter(m => m.status === 'approved');
+        const availableSlots = group.maxMembers - approvedMembers.length;
+        const isFull = availableSlots <= 0;
+        
+        // Check if current user is a member
+        const isMember = group.currentMembers.some(
+          member => member.user && member.user._id.toString() === req.user.id.toString()
+        );
+        
+        // Check if current user is creator
+        const isCreator = group.createdBy._id.toString() === req.user.id.toString();
+        
+        // Check if user has pending request
+        const hasPendingRequest = group.joinRequests.some(
+          req => req.user && req.user._id.toString() === req.user.id.toString() && req.status === 'pending'
+        );
+        
+        return {
+          id: group._id,
+          destination: group.destination,
+          description: group.description,
+          startDate: group.startDate,
+          endDate: group.endDate,
+          duration: Math.ceil((group.endDate - group.startDate) / (1000 * 60 * 60 * 24)),
+          budget: group.budget,
+          maxMembers: group.maxMembers,
+          currentMembers: group.currentMembers,
+          currentMembersCount: approvedMembers.length,
+          availableSlots: availableSlots,
+          isFull: isFull,
+          groupType: group.groupType,
+          status: group.status || 'planning',
+          tags: group.tags,
+          createdBy: {
+            id: group.createdBy._id,
+            name: group.groupType === 'anonymous' ? 'Anonymous Traveler' : group.createdBy.name,
+            profileImage: group.groupType === 'anonymous' ? 'anonymous-profile.jpg' : group.createdBy.profileImage
+          },
+          isMember: isMember,
+          isCreator: isCreator,
+          hasPendingRequest: hasPendingRequest,
+          createdAt: group.createdAt
+        };
+      }),
+      myGroups: userGroups.map(trip => ({
         id: trip._id,
         destination: trip.destination,
         startDate: trip.startDate,
         endDate: trip.endDate,
-        status: trip.status
+        status: trip.status || 'planning'
       }))
     };
     
     console.log('✅ Dashboard data fetched successfully');
+    console.log(`📝 Sending ${dashboardData.groups.length} groups to frontend`);
+    
     res.status(200).json(dashboardData);
     
   } catch (error) {
@@ -110,7 +101,7 @@ exports.getDashboard = async (req, res) => {
   }
 };
 
-// @desc    Get groups with filters
+// @desc    Get groups with filters (for Browse Groups page)
 // @route   GET /api/dashboard/groups
 // @access  Private
 exports.getGroups = async (req, res) => {
@@ -121,8 +112,6 @@ exports.getGroups = async (req, res) => {
     
     // Build filter query
     const filter = {
-      createdBy: { $ne: req.user.id },
-      status: { $in: ['planning', 'confirmed'] },
       endDate: { $gte: new Date() }
     };
     
@@ -157,7 +146,8 @@ exports.getGroups = async (req, res) => {
     // Execute query
     const groups = await Group.find(filter)
       .populate('createdBy', 'name profileImage')
-      .select('-joinRequests')
+      .populate('currentMembers.user', 'name profileImage')
+      .populate('joinRequests.user', 'name profileImage')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -166,9 +156,23 @@ exports.getGroups = async (req, res) => {
     
     console.log(`✅ Found ${groups.length} groups out of ${total}`);
     
+    // Format groups with additional data
+    const formattedGroups = groups.map(group => {
+      const approvedMembers = group.currentMembers.filter(m => m.status === 'approved');
+      const availableSlots = group.maxMembers - approvedMembers.length;
+      const isFull = availableSlots <= 0;
+      
+      return {
+        ...group.toObject(),
+        availableSlots,
+        isFull,
+        currentMembersCount: approvedMembers.length
+      };
+    });
+    
     res.status(200).json({
       success: true,
-      data: groups,
+      data: formattedGroups,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -198,7 +202,8 @@ exports.requestToJoin = async (req, res) => {
     console.log(`👥 Join request for group ${groupId} from user ${req.user.id}`);
     
     // Find the group
-    const group = await Group.findById(groupId);
+    const group = await Group.findById(groupId)
+      .populate('createdBy', 'name email');
     
     if (!group) {
       return res.status(404).json({
@@ -208,7 +213,8 @@ exports.requestToJoin = async (req, res) => {
     }
     
     // Check if group is full
-    if (group.isFull) {
+    const approvedMembers = group.currentMembers.filter(m => m.status === 'approved');
+    if (approvedMembers.length >= group.maxMembers) {
       return res.status(400).json({
         success: false,
         message: 'This group is already full'
@@ -216,7 +222,7 @@ exports.requestToJoin = async (req, res) => {
     }
     
     // Check if user is the creator
-    if (group.createdBy.toString() === req.user.id) {
+    if (group.createdBy._id.toString() === req.user.id) {
       return res.status(400).json({
         success: false,
         message: 'You cannot join your own group'
@@ -225,7 +231,7 @@ exports.requestToJoin = async (req, res) => {
     
     // Check if already requested
     const existingRequest = group.joinRequests.find(
-      request => request.user.toString() === req.user.id
+      request => request.user.toString() === req.user.id && request.status === 'pending'
     );
     
     if (existingRequest) {
@@ -237,7 +243,7 @@ exports.requestToJoin = async (req, res) => {
     
     // Check if already a member
     const existingMember = group.currentMembers.find(
-      member => member.user.toString() === req.user.id
+      member => member.user.toString() === req.user.id && member.status === 'approved'
     );
     
     if (existingMember) {
@@ -251,20 +257,26 @@ exports.requestToJoin = async (req, res) => {
     group.joinRequests.push({
       user: req.user.id,
       message: message || 'I would like to join your travel group',
-      status: 'pending'
+      status: 'pending',
+      requestedAt: new Date()
     });
     
     await group.save();
     
     // Notify group creator
-    const creator = await User.findById(group.createdBy);
-    if (creator) {
-      creator.addNotification(
-        'join_request',
-        'New Join Request',
-        `Someone wants to join your ${group.destination} trip`
-      );
-      await creator.save();
+    if (group.createdBy) {
+      const creator = await User.findById(group.createdBy._id);
+      if (creator) {
+        const requester = await User.findById(req.user.id);
+        creator.addNotification(
+          'join_request',
+          'New Join Request',
+          `${requester.name} wants to join your ${group.destination} trip`
+        );
+        await creator.save();
+        
+        console.log(`📩 Notification sent to creator ${creator.name}`);
+      }
     }
     
     console.log('✅ Join request submitted successfully');
