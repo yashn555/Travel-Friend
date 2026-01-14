@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const groupController = require('../controllers/groupController');
 const auth = require('../middleware/authMiddleware');
+const controller = require('../controllers/groupController');
 
-// Apply auth middleware to all routes
 router.use(auth.protect);
 
-router.post('/request-join', groupController.requestJoinGroup);
-router.post('/create', groupController.createGroup);
-router.get('/my-groups', groupController.getUserGroups);
+router.post('/create', controller.createGroup);
+router.post('/request-join', controller.requestJoinGroup);
+router.post('/handle-request', controller.handleJoinRequest);
+router.get('/my-groups', controller.getUserGroups);
 
 module.exports = router;
