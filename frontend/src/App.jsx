@@ -1,4 +1,4 @@
-// src/App.jsx
+// src/App.jsx - UPDATED VERSION
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -14,6 +14,8 @@ import GroupListPage from './pages/groups/GroupListPage';
 import GroupDetailsPage from './pages/groups/GroupDetailsPage';
 import MyGroupsPage from './pages/groups/MyGroupsPage';
 import GroupRequests from './pages/groups/GroupRequests';
+import GroupChatPage from './pages/chat/GroupChatPage'; // ADD THIS
+import ChatPage from './pages/chat/ChatPage'; // ADD THIS (for /chat route)
 
 // Components
 import Header from './components/layout/Header';
@@ -109,6 +111,14 @@ function App() {
             }
           />
           <Route
+            path="/groups/:id/chat" // ADD THIS ROUTE
+            element={
+              <ProtectedRoute>
+                <GroupChatPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/my-groups"
             element={
               <ProtectedRoute>
@@ -124,6 +134,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Chat Routes - ADD THESE */}
+          <Route
+  path="/chat"
+  element={
+    <ProtectedRoute>
+      <ChatPage />
+    </ProtectedRoute>
+  }
+/>
 
           {/* Default Route */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

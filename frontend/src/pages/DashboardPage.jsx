@@ -40,14 +40,20 @@ const DashboardPage = () => {
   };
 
   const handleJoin = async (groupId, destination) => {
-    try {
-      await requestToJoinGroup(groupId);
-      toast.success(`Join request sent for ${destination}!`);
-      fetchData(); // Refresh data
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to join group');
-    }
-  };
+  // Validate groupId
+  if (!groupId || groupId === 'undefined') {
+    toast.error('Invalid group ID');
+    return;
+  }
+
+  try {
+    await requestToJoinGroup(groupId);
+    toast.success(`Join request sent for ${destination}!`);
+    fetchData(); // Refresh dashboard data
+  } catch (error) {
+    toast.error(error.response?.data?.message || 'Failed to join group');
+  }
+};
 
   if (loading) {
     return (
@@ -169,11 +175,11 @@ const DashboardPage = () => {
                       </Button>
                     ) : (
                       <Button 
-                        onClick={() => handleJoin(g.id, g.destination)} 
-                        className="bg-blue-500 hover:bg-blue-600"
-                      >
-                        Request to Join
-                      </Button>
+  onClick={() => handleJoin(g.id, g.destination)} 
+  className="bg-blue-500 hover:bg-blue-600"
+>
+  Request to Join
+</Button>
                     )}
                     
                     <Button 

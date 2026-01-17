@@ -13,7 +13,7 @@ const VerifyOTPPage = () => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(600);
   const [userEmail, setUserEmail] = useState('');
   const [userId, setUserId] = useState('');
   const [verificationStatus, setVerificationStatus] = useState('');
@@ -21,22 +21,37 @@ const VerifyOTPPage = () => {
   
   useEffect(() => {
     // Get user data from localStorage
+    console.log('🔍 Checking localStorage for pending verification...');
     const pendingVerification = localStorage.getItem('pendingVerification');
-    console.log('Pending verification data:', pendingVerification);
     
     if (pendingVerification) {
       try {
-        const { email, userId } = JSON.parse(pendingVerification);
-        setUserEmail(email);
-        setUserId(userId);
-        console.log('Loaded user data:', { email, userId });
+        const data = JSON.parse(pendingVerification);
+        console.log('📋 Parsed pending verification:', data);
+        
+        if (data.userId && data.email) {
+          setUserEmail(data.email);
+          setUserId(data.userId);
+          
+          // Show OTP in console for testing
+          if (data.otp) {
+            console.log('🔐 TEST OTP:', data.otp);
+            toast.info(`OTP for testing: ${data.otp} (Check console)`);
+          }
+          
+          console.log('✅ Loaded user data:', { email: data.email, userId: data.userId });
+        } else {
+          console.error('❌ Invalid pending verification data:', data);
+          toast.error('Invalid verification data. Please register again.');
+          navigate('/register');
+        }
       } catch (error) {
-        console.error('Error parsing pending verification:', error);
+        console.error('❌ Error parsing pending verification:', error);
         toast.error('Invalid verification data. Please register again.');
         navigate('/register');
       }
     } else {
-      console.log('No pending verification found, redirecting to register');
+      console.log('❌ No pending verification found in localStorage');
       toast.error('Please register first');
       navigate('/register');
     }
@@ -55,8 +70,14 @@ const VerifyOTPPage = () => {
     return () => clearInterval(timer);
   }, [navigate]);
   
+  // ✅ ADD THIS FUNCTION BACK - formatTime function
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+  
   const handleChange = (index, value) => {
-    // Only allow numbers
     if (!/^\d*$/.test(value)) return;
     if (value.length > 1) return;
     
@@ -64,7 +85,6 @@ const VerifyOTPPage = () => {
     newOtp[index] = value;
     setOtp(newOtp);
     
-    // Auto-focus next input
     if (value && index < 5) {
       inputRefs.current[index + 1].focus();
     }
@@ -89,7 +109,6 @@ const VerifyOTPPage = () => {
     
     setOtp(newOtp);
     
-    // Focus last input
     const lastIndex = Math.min(pastedData.length, 5);
     if (inputRefs.current[lastIndex]) {
       inputRefs.current[lastIndex].focus();
@@ -98,6 +117,8 @@ const VerifyOTPPage = () => {
   
   const handleSubmit = async () => {
     const otpString = otp.join('');
+    
+    console.log('🔐 Submitting OTP:', otpString, 'for user:', userId);
     
     if (otpString.length !== 6) {
       toast.error('Please enter complete 6-digit OTP');
@@ -114,44 +135,45 @@ const VerifyOTPPage = () => {
     setVerificationStatus('verifying');
     
     try {
-      console.log('Verifying OTP:', { userId, otp: otpString });
+      console.log('🚀 Calling verifyOTP API...');
       const result = await verifyOTP(userId, otpString);
+      console.log('✅ OTP verification result:', result);
       
       if (result.success) {
+        console.log('🎉 OTP verified successfully!');
         setVerificationStatus('success');
         toast.success('Account verified successfully!');
         
-        dispatch(loginAsync({
-          token: result.token,
-          user: result.user
-        }));
+        // Store token and user in Redux
+        if (result.token && result.user) {
+          console.log('🔄 Dispatching loginAsync...');
+          dispatch(loginAsync({
+            token: result.token,
+            user: result.user
+          }));
+        }
         
+        // Clear pending verification
         localStorage.removeItem('pendingVerification');
         
-        // Small delay to show success message
+        console.log('📍 Redirecting to dashboard...');
+        // Redirect to dashboard
         setTimeout(() => {
           navigate('/dashboard');
         }, 1500);
+      } else {
+        console.error('❌ OTP verification failed:', result.message);
+        toast.error(result.message || 'Verification failed');
       }
     } catch (error) {
       setVerificationStatus('error');
-      console.error('OTP verification error:', error);
+      console.error('❌ OTP verification error:', error);
       
       // Clear OTP on error
       setOtp(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
       
-      if (error.message.includes('Invalid or expired')) {
-        toast.error('Invalid or expired OTP. Please try again or resend.');
-      } else if (error.message.includes('User not found')) {
-        toast.error('User not found. Please register again.');
-        navigate('/register');
-      } else if (error.message.includes('already verified')) {
-        toast.info('Account is already verified. Please login.');
-        navigate('/login');
-      } else {
-        toast.error(error.message || 'Verification failed. Please try again.');
-      }
+      toast.error(error.message || 'Verification failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -167,28 +189,26 @@ const VerifyOTPPage = () => {
     setIsResending(true);
     try {
       const result = await resendOTP(userId);
-      setTimeLeft(600); // Reset timer
-      setOtp(['', '', '', '', '', '']); // Clear OTP fields
-      inputRefs.current[0]?.focus(); // Focus first input
+      setTimeLeft(600);
+      setOtp(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
       
       toast.success(result.message || 'New OTP sent to your email');
       
-      // Show OTP in console for development
+      // Store new OTP in localStorage for testing
       if (result.otp) {
-        console.log('New OTP (development):', result.otp);
+        console.log('🔐 NEW OTP:', result.otp);
+        const currentData = JSON.parse(localStorage.getItem('pendingVerification') || '{}');
+        currentData.otp = result.otp;
+        localStorage.setItem('pendingVerification', JSON.stringify(currentData));
+        toast.info(`New OTP: ${result.otp} (Check console for testing)`);
       }
     } catch (error) {
-      console.error('Resend OTP error:', error);
+      console.error('❌ Resend OTP error:', error);
       toast.error(error.message || 'Failed to resend OTP');
     } finally {
       setIsResending(false);
     }
-  };
-  
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
   
   const renderVerificationStatus = () => {
@@ -222,8 +242,8 @@ const VerifyOTPPage = () => {
     <div className="max-w-md mx-auto">
       <div className="bg-white rounded-2xl shadow-xl p-8">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FaEnvelope className="text-primary-600 text-2xl" />
+          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FaEnvelope className="text-blue-600 text-2xl" />
           </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
             Verify Your Email
@@ -231,7 +251,7 @@ const VerifyOTPPage = () => {
           <p className="text-gray-600 mb-2">
             We've sent a 6-digit verification code to
           </p>
-          <p className="text-primary-600 font-medium break-all">{userEmail}</p>
+          <p className="text-blue-600 font-medium break-all">{userEmail}</p>
           
           {renderVerificationStatus()}
         </div>
@@ -255,7 +275,7 @@ const VerifyOTPPage = () => {
                 onPaste={index === 0 ? handlePaste : undefined}
                 disabled={isLoading || verificationStatus === 'success'}
                 className="w-14 h-14 text-2xl font-bold text-center border-2 border-gray-300 rounded-lg 
-                         focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200
+                         focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200
                          disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors"
               />
             ))}
@@ -288,7 +308,7 @@ const VerifyOTPPage = () => {
               variant="secondary"
               onClick={handleResendOTP}
               isLoading={isResending}
-              disabled={timeLeft > 540 || verificationStatus === 'success'} // Can resend after 1 minute
+              disabled={timeLeft > 540 || verificationStatus === 'success'}
               className="flex-1"
             >
               <FaRedo className="mr-2" />
@@ -307,15 +327,21 @@ const VerifyOTPPage = () => {
           </div>
         </div>
         
-        <div className="mt-8 text-center text-sm text-gray-500">
-          <p className="mb-2">
+        {/* Debug Section */}
+        <div className="mt-8 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <p className="text-center text-sm text-gray-500 mb-2">
             Check your spam folder if you don't see the email.
           </p>
-          {process.env.NODE_ENV === 'development' && (
-            <p className="text-xs bg-gray-100 p-2 rounded">
-              Development Mode: OTP is logged in backend console
-            </p>
-          )}
+          <button
+            onClick={() => {
+              const pending = localStorage.getItem('pendingVerification');
+              console.log('📋 Current pending verification:', pending);
+              console.log('👤 Current state:', { userId, userEmail, otp: otp.join('') });
+            }}
+            className="text-xs text-blue-500 hover:text-blue-600 w-full text-center"
+          >
+            Debug Info
+          </button>
         </div>
       </div>
     </div>

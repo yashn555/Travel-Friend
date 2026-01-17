@@ -1,3 +1,4 @@
+// src/pages/auth/RegisterPage.jsx - FIXED VERSION
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -25,26 +26,49 @@ const RegisterPage = () => {
   const password = watch('password');
   
   const onSubmit = async (data) => {
-    setIsLoading(true);
-    try {
-      const result = await registerUser(data);
+  setIsLoading(true);
+  try {
+    console.log('🚀 Registering user with data:', data);
+    const result = await registerUser(data);
+    
+    console.log('📦 Registration result:', result);
+    
+    if (result.success) {
+      // ✅ Store user data for OTP verification
+      const pendingData = {
+        userId: result.userId || result.data?.userId,
+        email: result.email || data.email,
+        name: result.name || data.name,
+        otp: result.otp // For testing
+      };
       
-      if (result.success) {
-        // Store user email and ID for OTP verification
-        localStorage.setItem('pendingVerification', JSON.stringify({
-          userId: result.userId,
-          email: result.email
-        }));
-        
-        toast.success('Registration successful! Please check your email for OTP.');
-        navigate('/verify-otp');
+      console.log('💾 Storing pending verification:', pendingData);
+      localStorage.setItem('pendingVerification', JSON.stringify(pendingData));
+      
+      toast.success(result.message || 'Registration successful! Please check your email for OTP.');
+      
+      // Show OTP for testing
+      if (pendingData.otp) {
+        console.log('🔐 OTP for testing:', pendingData.otp);
+        toast.info(`OTP: ${pendingData.otp} (Check console)`);
       }
-    } catch (error) {
-      toast.error(error.message || 'Registration failed. Please try again.');
-    } finally {
-      setIsLoading(false);
+      
+      // Navigate to verify OTP page
+      console.log('📍 Navigating to verify-otp page');
+      setTimeout(() => {
+        navigate('/verify-otp');
+      }, 1500);
+      
+    } else {
+      toast.error(result.message || 'Registration failed');
     }
-  };
+  } catch (error) {
+    console.error('❌ Registration error:', error);
+    toast.error(error.message || 'Registration failed. Please try again.');
+  } finally {
+    setIsLoading(false);
+  }
+};
   
   return (
     <div className="max-w-md mx-auto">
@@ -121,11 +145,8 @@ const RegisterPage = () => {
                   minLength: {
                     value: 6,
                     message: 'Password must be at least 6 characters'
-                  },
-                  pattern: {
-                    value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-                    message: 'Password must contain uppercase, lowercase, and number'
                   }
+                  // Removed complex pattern for testing
                 })}
               />
               <button
@@ -182,17 +203,21 @@ const RegisterPage = () => {
           </p>
         </div>
         
-        <div className="mt-6 text-center text-sm text-gray-500">
-          <p>
-            By registering, you agree to our{' '}
-            <a href="#" className="text-primary-600 hover:underline">
-              Terms of Service
-            </a>{' '}
-            and{' '}
-            <a href="#" className="text-primary-600 hover:underline">
-              Privacy Policy
-            </a>
+        {/* Debug Section */}
+        <div className="mt-6 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <p className="text-xs text-gray-500 text-center">
+            For testing: OTP will be shown in browser console after registration
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              const pending = localStorage.getItem('pendingVerification');
+              console.log('Current pending verification:', pending);
+            }}
+            className="text-xs text-blue-500 hover:text-blue-600 mt-1"
+          >
+            Check Stored Data
+          </button>
         </div>
       </div>
     </div>

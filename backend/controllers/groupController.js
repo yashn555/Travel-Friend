@@ -1,3 +1,5 @@
+// server/controllers/groupController.js
+const mongoose = require('mongoose');
 const Group = require('../models/Group');
 const User = require('../models/User');
 
@@ -159,6 +161,24 @@ exports.getGroupById = async (req, res) => {
   try {
     const { groupId } = req.params;
 
+    console.log('🔍 Getting group by ID:', groupId);
+
+    // Validate groupId
+    if (!groupId || groupId === 'undefined' || groupId === 'null') {
+      return res.status(400).json({
+        success: false,
+        message: 'Group ID is required'
+      });
+    }
+
+    // Check if groupId is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID format'
+      });
+    }
+
     const group = await Group.findById(groupId)
       .populate('createdBy', 'name profileImage email')
       .populate('currentMembers.user', 'name profileImage email')
@@ -183,13 +203,14 @@ exports.getGroupById = async (req, res) => {
       currentMembersCount: approvedMembers.length
     };
 
+    console.log('✅ Group found:', group.destination);
     res.status(200).json({
       success: true,
       data: enhancedGroup
     });
 
   } catch (error) {
-    console.error('Error fetching group:', error);
+    console.error('❌ Error fetching group:', error.message);
     res.status(500).json({ 
       success: false, 
       message: 'Server error while fetching group',
@@ -205,6 +226,24 @@ exports.requestJoinGroup = async (req, res) => {
   try {
     const { groupId, message } = req.body;
     const userId = req.user.id;
+
+    console.log('👥 Join request for group:', groupId, 'from user:', userId);
+
+    // Validate groupId
+    if (!groupId || groupId === 'undefined' || groupId === 'null') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Group ID is required' 
+      });
+    }
+
+    // Validate groupId format
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid group ID format' 
+      });
+    }
 
     const group = await Group.findById(groupId);
     if (!group) {
@@ -274,6 +313,7 @@ exports.requestJoinGroup = async (req, res) => {
       await creator.save();
     }
 
+    console.log('✅ Join request sent successfully');
     res.status(200).json({ 
       success: true, 
       message: 'Join request sent successfully' 
@@ -292,13 +332,33 @@ exports.requestJoinGroup = async (req, res) => {
 // @desc    Get join requests for a group (admin only)
 // @route   GET /api/groups/:groupId/requests
 // @access  Private
-exports.getJoinRequests = async (req, res) => {
+exports.getJoinRequestsByGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
     const userId = req.user.id;
 
+    console.log(`📋 Fetching join requests for group ${groupId} by user ${userId}`);
+
+    // Validate groupId
+    if (!groupId || groupId === 'undefined' || groupId === 'null') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Group ID is required' 
+      });
+    }
+
+    // Validate groupId format
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid group ID format' 
+      });
+    }
+
+    // Find the group with populated join requests
     const group = await Group.findById(groupId)
-      .populate('joinRequests.user', 'name email profileImage');
+      .populate('joinRequests.user', 'name email profileImage')
+      .populate('createdBy', 'name');
 
     if (!group) {
       return res.status(404).json({ 
@@ -307,8 +367,11 @@ exports.getJoinRequests = async (req, res) => {
       });
     }
 
+    console.log(`Group creator: ${group.createdBy._id}, Current user: ${userId}`);
+
     // Check if user is the creator
-    if (group.createdBy.toString() !== userId) {
+    if (group.createdBy._id.toString() !== userId.toString()) {
+      console.log('❌ User is not the creator');
       return res.status(403).json({ 
         success: false, 
         message: 'Only group creator can view join requests' 
@@ -317,6 +380,8 @@ exports.getJoinRequests = async (req, res) => {
 
     // Get pending requests
     const pendingRequests = group.joinRequests.filter(r => r.status === 'pending');
+    
+    console.log(`✅ Found ${pendingRequests.length} pending requests`);
 
     res.status(200).json({ 
       success: true, 
@@ -324,7 +389,7 @@ exports.getJoinRequests = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching join requests:', error);
+    console.error('❌ Error fetching join requests:', error.message);
     res.status(500).json({ 
       success: false, 
       message: 'Server error while fetching join requests',
@@ -341,13 +406,23 @@ exports.handleJoinRequest = async (req, res) => {
     const { groupId, requestId, action } = req.body;
     const adminId = req.user.id;
 
+    console.log(`🔄 Handling request ${action} for group ${groupId}, request ${requestId}`);
+
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ 
         success: false, 
         message: 'Invalid action. Use "approve" or "reject"' 
       });
     }
- 
+
+    // Validate IDs
+    if (!groupId || groupId === 'undefined' || !requestId || requestId === 'undefined') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Group ID and Request ID are required' 
+      });
+    }
+
     const group = await Group.findById(groupId);
     if (!group) {
       return res.status(404).json({ 
@@ -381,19 +456,6 @@ exports.handleJoinRequest = async (req, res) => {
           message: 'Group is full. Cannot approve more members.' 
         });
       }
-
-      // 🔥 AUTO-ADD USER TO GROUP CHAT
-  try {
-    await api.post(`/api/chat/group/${groupId}/add-user/${request.user._id}`, {}, {
-      headers: {
-        Authorization: `Bearer ${req.headers.authorization.split(' ')[1]}`
-      }
-    });
-    console.log(`✅ User ${request.user._id} added to group chat`);
-  } catch (chatError) {
-    console.error('❌ Error adding user to chat:', chatError.message);
-    // Don't fail the whole request if chat fails
-  }
 
       // Check if user is already a member
       const alreadyMember = group.currentMembers.some(
@@ -448,60 +510,6 @@ exports.handleJoinRequest = async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Server error while handling join request',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-};
-// Add this function to your groupController.js
-
-// @desc    Get join requests for a specific group (with user details)
-// @route   GET /api/groups/:groupId/requests
-// @access  Private
-exports.getJoinRequestsByGroup = async (req, res) => {
-  try {
-    const { groupId } = req.params;
-    const userId = req.user.id;
-
-    console.log(`📋 Fetching join requests for group ${groupId} by user ${userId}`);
-
-    // Find the group with populated join requests
-    const group = await Group.findById(groupId)
-      .populate('joinRequests.user', 'name email profileImage')
-      .populate('createdBy', 'name');
-
-    if (!group) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Group not found' 
-      });
-    }
-
-    console.log(`Group creator: ${group.createdBy._id}, Current user: ${userId}`);
-
-    // Check if user is the creator
-    if (group.createdBy._id.toString() !== userId.toString()) {
-      console.log('❌ User is not the creator');
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Only group creator can view join requests' 
-      });
-    }
-
-    // Get pending requests
-    const pendingRequests = group.joinRequests.filter(r => r.status === 'pending');
-    
-    console.log(`✅ Found ${pendingRequests.length} pending requests`);
-
-    res.status(200).json({ 
-      success: true, 
-      data: pendingRequests 
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching join requests:', error.message);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error while fetching join requests',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

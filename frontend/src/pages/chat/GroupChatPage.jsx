@@ -1,4 +1,4 @@
-// src/pages/chat/GroupChatPage.jsx
+// frontend/src/pages/chat/GroupChatPage.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -22,8 +22,15 @@ const GroupChatPage = () => {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
+    // Validate groupId
+    if (!groupId || groupId === 'undefined') {
+      toast.error('Invalid group ID');
+      navigate('/my-groups');
+      return;
+    }
+
     fetchChatData();
-  }, [groupId]);
+  }, [groupId, navigate]);
 
   const fetchChatData = async () => {
     try {
@@ -96,6 +103,7 @@ const GroupChatPage = () => {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader size="lg" />
+        <span className="ml-3 text-gray-600">Loading chat...</span>
       </div>
     );
   }

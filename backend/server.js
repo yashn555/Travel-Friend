@@ -20,6 +20,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 
+app.use('/api/chat', chatRoutes); 
+
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -87,3 +89,5 @@ process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Rejection:', err.message);
   console.error(err.stack);
 });
+
+

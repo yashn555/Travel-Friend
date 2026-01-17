@@ -1,6 +1,7 @@
+// src/services/api.js
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -16,10 +17,35 @@ api.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor
+api.interceptors.response.use(
+  (response) => {
+    // ✅ IMPORTANT FIX: Return the data from backend
+    return response.data;
+  },
+  (error) => {
+    console.error('API Error:', error.response?.data || error.message);
+    return Promise.reject(error);
+  }
+);
 
 // ===== AUTH =====
 export const registerUser = (data) => api.post('/auth/register', data).then(res => res.data);
-export const verifyUserOTP = (data) => api.post('/auth/verify-otp', data).then(res => res.data);
+export const verifyOTP = (userId, otp) => api.post('/auth/verify-otp', { userId, otp }).then(res => res.data);
+export const resendOTP = (userId) => api.post('/auth/resend-otp', { userId }).then(res => res.data);
 export const loginUser = (credentials) => api.post('/auth/login', credentials).then(res => res.data);
 export const getCurrentUser = () => api.get('/auth/me').then(res => res.data);
 export const logoutUser = () => api.get('/auth/logout').then(res => res.data);
@@ -28,6 +54,13 @@ export const logoutUser = () => api.get('/auth/logout').then(res => res.data);
 export const getDashboardData = () => api.get('/dashboard').then(res => res.data);
 export const searchGroups = (filters) => api.get('/dashboard/groups', { params: filters }).then(res => res.data);
 export const requestToJoinGroup = (groupId) => api.post(`/dashboard/groups/${groupId}/join`).then(res => res.data);
+
+// ===== PROFILE =====
+export const getProfile = () => api.get('/profile').then(res => res.data);
+export const updateProfile = (data) => api.put('/profile/update', data).then(res => res.data);
+export const uploadProfileImage = (formData) => api.post('/profile/upload-image', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+}).then(res => res.data);
 
 // ===== GROUP =====
 export const createGroup = (data) => api.post('/groups/create', data).then(res => res.data);
@@ -38,12 +71,10 @@ export const getGroupRequests = (groupId) => api.get(`/groups/${groupId}/request
 export const handleGroupRequest = (groupId, requestId, action) => api.put('/groups/handle-request', { groupId, requestId, action }).then(res => res.data);
 export const getAllGroups = () => api.get('/groups/all-groups').then(res => res.data);
 
-// ===== PROFILE =====
-export const getProfile = () => api.get('/profile').then(res => res.data);
-export const updateProfile = (data) => api.put('/profile', data).then(res => res.data);
-export const uploadProfileImage = (imageUrl) => api.post('/profile/upload-image', { imageUrl }).then(res => res.data);
 // ===== CHAT =====
 export const getGroupChat = (groupId) => api.get(`/chat/group/${groupId}`).then(res => res.data);
 export const sendChatMessage = (groupId, text) => api.post(`/chat/group/${groupId}/message`, { text }).then(res => res.data);
 export const getMyChats = () => api.get('/chat/my-chats').then(res => res.data);
+export const addUserToChat = (groupId, userId) => api.post(`/chat/group/${groupId}/add-user/${userId}`).then(res => res.data);
+
 export default api;

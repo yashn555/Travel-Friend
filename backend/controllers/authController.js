@@ -47,7 +47,7 @@ const sendTokenResponse = (user, statusCode, res) => {
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
-exports.register = async (req, res) => {  // REMOVED 'next' parameter
+exports.register = async (req, res) => {
   try {
     console.log('📝 Registration attempt for:', req.body.email);
     
@@ -99,14 +99,17 @@ exports.register = async (req, res) => {  // REMOVED 'next' parameter
     console.log('📧 Sending OTP email...');
     await sendOTPEmail(email, otp);
     
-    // Send response
+    // Send response - FIXED STRUCTURE
     console.log('✅ Registration successful for:', email);
     return res.status(201).json({
       success: true,
       message: 'Registration successful! Check your email for OTP.',
-      userId: user._id,
-      email: user.email,
-      otp: otp // Always include OTP for testing
+      data: {  // ✅ Wrap response in 'data' object
+        userId: user._id,
+        email: user.email,
+        name: user.name,
+        otp: otp // For testing
+      }
     });
     
   } catch (error) {
@@ -116,7 +119,6 @@ exports.register = async (req, res) => {  // REMOVED 'next' parameter
     let errorMessage = 'Server error during registration';
     
     if (error.code === 11000) {
-      // MongoDB duplicate key error
       if (error.keyValue && error.keyValue.email) {
         errorMessage = 'Email already exists';
       } else if (error.keyValue && error.keyValue.mobile) {
@@ -135,7 +137,6 @@ exports.register = async (req, res) => {  // REMOVED 'next' parameter
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-  // DO NOT call next() here
 };
 
 // @desc    Verify OTP
