@@ -22,4 +22,7 @@ router.get('/my-created-groups', groupController.getMyCreatedGroups);
 // Add this route after your other routes
 router.get('/debug/test-requests/:groupId', groupController.getJoinRequestsByGroup);
 router.get('/my-created-groups', groupController.getMyCreatedGroups);
+// Add these routes:
+router.put('/:id', groupController.updateGroup);
+router.delete('/:id', groupController.deleteGroup);
 module.exports = router;

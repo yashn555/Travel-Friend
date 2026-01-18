@@ -45,3 +45,17 @@ export const createGroup = async (groupData) => {
 // Alias functions for compatibility
 export const getAllGroups = fetchAllGroups;
 export const requestJoinGroup = sendJoinRequest;
+
+// Add these functions to your existing groupService.js
+
+// Update group
+export const updateGroup = async (groupId, groupData) => {
+  const response = await api.put(`/groups/${groupId}`, groupData);
+  return response.data;
+};
+
+// Delete group
+export const deleteGroup = async (groupId) => {
+  const response = await api.delete(`/groups/${groupId}`);
+  return response.data;
+};

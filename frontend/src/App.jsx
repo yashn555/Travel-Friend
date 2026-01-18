@@ -17,6 +17,7 @@ import GroupRequests from './pages/groups/GroupRequests';
 import GroupChatPage from './pages/chat/GroupChatPage';
 import ChatPage from './pages/chat/ChatPage';
 import NotificationsPage from './pages/notifications/NotificationsPage';
+import EditGroupPage from './pages/groups/EditGroupPage';
 
 // Components
 import Header from './components/layout/Header';
@@ -57,6 +58,7 @@ function App() {
             <Route path="/group-requests" element={<ProtectedRoute><GroupRequests /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+            <Route path="/edit-group/:id" element={<ProtectedRoute><EditGroupPage /></ProtectedRoute>} />
             
             {/* Default */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -7,6 +7,8 @@ const Chat = require('../models/Chat'); // Add this import
 // @desc    Create a new group
 // @route   POST /api/groups/create
 // @access  Private
+// In groupController.js - update createGroup function:
+
 exports.createGroup = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -15,14 +17,16 @@ exports.createGroup = async (req, res) => {
       description,
       startDate,
       endDate,
-      minBudget,
-      maxBudget,
+      budget,
       maxMembers,
       groupType,
+      privacy,
+      travelPreferences,
+      interests,
       tags
     } = req.body;
 
-    console.log('📝 Creating new group:', { destination, userId });
+    console.log('📝 Creating enhanced group:', { destination, userId });
 
     // Validate dates
     if (new Date(startDate) >= new Date(endDate)) {
@@ -33,26 +37,23 @@ exports.createGroup = async (req, res) => {
     }
 
     // Validate budget
-    if (parseInt(minBudget) > parseInt(maxBudget)) {
+    if (budget && parseInt(budget.min) > parseInt(budget.max)) {
       return res.status(400).json({
         success: false,
         message: 'Maximum budget must be greater than minimum budget'
       });
     }
 
-    const group = await Group.create({
+    // Build group object
+    const groupData = {
       destination,
       description,
       startDate,
       endDate,
-      budget: { 
-        min: parseInt(minBudget), 
-        max: parseInt(maxBudget),
-        currency: 'INR' 
-      },
-      maxMembers: parseInt(maxMembers),
-      groupType: groupType || 'anonymous',
-      tags: tags || [],
+      budget: budget || { min: 0, max: 0, currency: 'INR' },
+      maxMembers: parseInt(maxMembers) || 10,
+      groupType: groupType || 'open',
+      privacy: privacy || 'public',
       createdBy: userId,
       status: 'planning',
       currentMembers: [{
@@ -61,39 +62,72 @@ exports.createGroup = async (req, res) => {
         joinedAt: Date.now(),
         role: 'creator'
       }]
-    });
+    };
 
-    console.log('✅ Group created:', group._id);
+    // Add optional enhanced fields
+    if (travelPreferences) {
+      groupData.travelPreferences = {
+        travelStyle: travelPreferences.travelStyle || [],
+        accommodationType: travelPreferences.accommodationType || 'hotel',
+        transportMode: travelPreferences.transportMode || [],
+        smokingAllowed: travelPreferences.smokingAllowed || 'no',
+        drinkingAllowed: travelPreferences.drinkingAllowed || 'social',
+        petsAllowed: travelPreferences.petsAllowed || 'no',
+        genderPreference: travelPreferences.genderPreference || 'any',
+        ageRange: travelPreferences.ageRange || { min: 18, max: 60 }
+      };
+    }
 
-  // ✅ AUTO-CREATE CHAT FOR THE GROUP
-try {
-  await Chat.create({
-    group: group._id,
-    participants: [userId],
-    messages: [{
-      sender: userId, // Use creator as sender
-      text: `Group "${destination}" has been created! Welcome to the chat.`,
-      timestamp: new Date(),
-      isSystemMessage: true
-    }],
-    lastActivity: new Date()
-  });
-  console.log(`✅ Chat automatically created for group: ${group.destination}`);
-} catch (chatError) {
-  console.error('❌ Error creating chat:', chatError.message);
-  console.error('Chat error details:', chatError);
-  // Don't fail the group creation if chat fails
-}
+    if (interests && Array.isArray(interests)) {
+      groupData.interests = interests;
+    }
 
-    // Populate creator info
+    if (tags && Array.isArray(tags)) {
+      groupData.tags = tags;
+    }
+
+    const group = await Group.create(groupData);
+
+    console.log('✅ Enhanced group created:', group._id);
+
+    // Auto-create chat for the group
+    try {
+      await Chat.create({
+        group: group._id,
+        participants: [userId],
+        messages: [{
+          sender: userId,
+          text: `Group "${destination}" has been created! Welcome to the chat. Let's plan our adventure! ✈️`,
+          timestamp: new Date(),
+          isSystemMessage: true
+        }],
+        lastActivity: new Date()
+      });
+      console.log(`✅ Chat automatically created for group: ${group.destination}`);
+    } catch (chatError) {
+      console.error('❌ Error creating chat:', chatError.message);
+      // Don't fail the group creation if chat fails
+    }
+
+    // Get enhanced group data with populated fields
     const populatedGroup = await Group.findById(group._id)
-      .populate('createdBy', 'name profileImage')
-      .populate('currentMembers.user', 'name profileImage');
+      .populate('createdBy', 'name profileImage rating')
+      .populate('currentMembers.user', 'name profileImage rating')
+      .lean();
+
+    // Add enhanced data
+    const enhancedGroup = {
+      ...populatedGroup,
+      availableSlots: (populatedGroup.maxMembers || 0) - 1, // Creator is already a member
+      isFull: populatedGroup.maxMembers <= 1,
+      currentMembersCount: 1,
+      durationDays: Math.ceil((new Date(populatedGroup.endDate) - new Date(populatedGroup.startDate)) / (1000 * 60 * 60 * 24))
+    };
 
     res.status(201).json({
       success: true,
-      message: 'Group created successfully',
-      data: populatedGroup
+      message: 'Travel squad created successfully! 🎉',
+      data: enhancedGroup
     });
 
   } catch (error) {
@@ -701,6 +735,97 @@ exports.getMyCreatedGroups = async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Test endpoint error',
+      error: error.message
+    });
+  }
+};
+
+
+// Update group
+exports.updateGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    // Find group
+    const group = await Group.findById(id);
+    
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+    
+    // Check if user is the creator
+    if (group.createdBy.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to edit this group'
+      });
+    }
+    
+    // Update group
+    const updatedGroup = await Group.findByIdAndUpdate(
+      id,
+      updates,
+      { new: true, runValidators: true }
+    ).populate('createdBy', 'name email');
+    
+    res.status(200).json({
+      success: true,
+      message: 'Group updated successfully',
+      data: updatedGroup
+    });
+    
+  } catch (error) {
+    console.error('Update group error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update group',
+      error: error.message
+    });
+  }
+};
+
+// Delete group
+exports.deleteGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Find group
+    const group = await Group.findById(id);
+    
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+    
+    // Check if user is the creator
+    if (group.createdBy.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this group'
+      });
+    }
+    
+    // TODO: Also delete related data (chats, requests, etc.)
+    
+    // Delete group
+    await Group.findByIdAndDelete(id);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Group deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Delete group error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete group',
       error: error.message
     });
   }
