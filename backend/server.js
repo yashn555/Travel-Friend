@@ -14,6 +14,7 @@ const profileRoutes = require('./routes/profileRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 
+
 // Initialize express
 const app = express();
 const server = http.createServer(app);
