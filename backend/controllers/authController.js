@@ -27,21 +27,22 @@ const sendTokenResponse = (user, statusCode, res) => {
     options.secure = true;
   }
   
-  res
-    .status(statusCode)
-    .cookie('token', token, options)
-    .json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        mobile: user.mobile,
-        isVerified: user.isVerified,
-        role: user.role
-      }
-    });
+  // Set the cookie
+  res.cookie('token', token, options);
+  
+  // Send JSON response - FIXED: Direct response without wrapping in data
+  res.status(statusCode).json({
+    success: true,
+    token, // This should be directly accessible
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      mobile: user.mobile,
+      isVerified: user.isVerified,
+      role: user.role
+    }
+  });
 };
 
 // @desc    Register user
@@ -142,7 +143,7 @@ exports.register = async (req, res) => {
 // @desc    Verify OTP
 // @route   POST /api/auth/verify-otp
 // @access  Public
-exports.verifyOTP = async (req, res) => {  // REMOVED 'next' parameter
+exports.verifyOTP = async (req, res) => {
   try {
     const { userId, otp } = req.body;
     
@@ -207,7 +208,7 @@ exports.verifyOTP = async (req, res) => {  // REMOVED 'next' parameter
     user.clearOTP();
     await user.save();
     
-    console.log('✅ User marked as verified');
+    console.log('✅ User marked as verified:', user.email);
     
     // Send welcome email
     try {
@@ -217,11 +218,14 @@ exports.verifyOTP = async (req, res) => {  // REMOVED 'next' parameter
       console.error('Failed to send welcome email:', emailError.message);
     }
     
+    console.log('📝 Sending token response for user:', user.email);
+    
     // Send token response
     return sendTokenResponse(user, 200, res);
     
   } catch (error) {
     console.error('❌ OTP verification error:', error.message);
+    console.error('Error stack:', error.stack);
     
     return res.status(500).json({
       success: false,
@@ -229,13 +233,12 @@ exports.verifyOTP = async (req, res) => {  // REMOVED 'next' parameter
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-  // DO NOT call next() here
 };
 
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
-exports.login = async (req, res) => {  // REMOVED 'next' parameter
+exports.login = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -280,7 +283,8 @@ exports.login = async (req, res) => {  // REMOVED 'next' parameter
       });
     }
     
-    console.log('✅ Login successful');
+    console.log('✅ Login successful for:', email);
+    console.log('📝 User ID:', user._id);
     
     // Send token response
     return sendTokenResponse(user, 200, res);
@@ -293,10 +297,11 @@ exports.login = async (req, res) => {  // REMOVED 'next' parameter
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-  // DO NOT call next() here
 };
 
-// Other functions remain the same but REMOVE 'next' parameter
+// @desc    Get current user
+// @route   GET /api/auth/me
+// @access  Private
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -314,6 +319,9 @@ exports.getMe = async (req, res) => {
   }
 };
 
+// @desc    Logout user
+// @route   GET /api/auth/logout
+// @access  Private
 exports.logout = (req, res) => {
   res.cookie('token', 'none', {
     expires: new Date(Date.now() + 10 * 1000),
@@ -326,6 +334,9 @@ exports.logout = (req, res) => {
   });
 };
 
+// @desc    Resend OTP
+// @route   POST /api/auth/resend-otp
+// @access  Public
 exports.resendOTP = async (req, res) => {
   try {
     const { userId } = req.body;

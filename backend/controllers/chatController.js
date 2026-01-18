@@ -236,6 +236,7 @@ exports.addUserToChat = async (req, res) => {
     });
   }
 };
+// backend/controllers/chatController.js - Update getMyChats function
 
 // @desc    Get user's chat groups
 // @route   GET /api/chat/my-chats
@@ -243,23 +244,43 @@ exports.addUserToChat = async (req, res) => {
 exports.getMyChats = async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log(`💬 Fetching chats for user: ${userId}`);
 
-    // Find groups where user is a member
+    // Find groups where user is a member - select minimal fields
     const groups = await Group.find({
       'currentMembers.user': userId,
       'currentMembers.status': 'approved'
     }).select('_id destination');
 
+    console.log(`📋 Found ${groups.length} groups for user chats`);
+
+    // Get group IDs
+    const groupIds = groups.map(g => g._id);
+
+    if (groupIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: 'No chat groups found'
+      });
+    }
+
     // Find chats for these groups
     const chats = await Chat.find({
-      group: { $in: groups.map(g => g._id) }
+      group: { $in: groupIds }
     })
+    .select('-__v') // Exclude version key
     .populate('group', 'destination')
     .populate({
       path: 'messages',
-      options: { sort: { timestamp: -1 }, limit: 1 }
+      options: { sort: { timestamp: -1 }, limit: 1 },
+      select: 'text timestamp sender isSystemMessage'
     })
-    .sort({ updatedAt: -1 });
+    .populate('participants', 'name profileImage')
+    .sort({ lastActivity: -1 })
+    .lean(); // Use lean() to get plain objects
+
+    console.log(`💬 Found ${chats.length} chats`);
 
     res.status(200).json({
       success: true,
@@ -267,7 +288,9 @@ exports.getMyChats = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching user chats:', error);
+    console.error('❌ Error fetching user chats:', error.message);
+    console.error('Error stack:', error.stack);
+    
     res.status(500).json({
       success: false,
       message: 'Server error while fetching chats',

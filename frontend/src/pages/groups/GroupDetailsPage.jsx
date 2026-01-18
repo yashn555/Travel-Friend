@@ -208,62 +208,63 @@ const GroupDetailsPage = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="pt-6 border-t border-gray-200">
-            <div className="flex flex-wrap gap-4">
-              {isCreator ? (
-                <>
-                  <Button
-                    onClick={() => navigate(`/groups/${id}/chat`)}
-                    className="bg-green-500 hover:bg-green-600"
-                  >
-                    Go to Group Chat
-                  </Button>
-                  <Button
-                    onClick={() => navigate('/group-requests')}
-                    className="bg-yellow-500 hover:bg-yellow-600"
-                  >
-                    Manage Join Requests
-                  </Button>
-                </>
-              ) : isMember ? (
-                <Button
-                  onClick={() => navigate(`/groups/${id}/chat`)}
-                  className="bg-green-500 hover:bg-green-600"
-                >
-                  Go to Group Chat
-                </Button>
-              ) : hasPendingRequest ? (
-                <Button
-                  disabled
-                  className="bg-yellow-400 cursor-not-allowed"
-                >
-                  Request Pending Approval
-                </Button>
-              ) : group.isFull ? (
-                <Button
-                  disabled
-                  className="bg-red-400 cursor-not-allowed"
-                >
-                  Group is Full
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleJoin}
-                  disabled={requesting}
-                  className="bg-blue-500 hover:bg-blue-600"
-                >
-                  {requesting ? 'Sending Request...' : 'Request to Join'}
-                </Button>
-              )}
+         <div className="pt-6 border-t border-gray-200">
+  <div className="flex flex-wrap gap-4">
+    {isCreator ? (
+      <>
+        {/* FIXED: Changed route from /chat/:id to /groups/:id/chat */}
+        <Button
+  onClick={() => navigate(`/groups/${id}/chat`)}  // CORRECT
+  className="bg-green-500 hover:bg-green-600"
+>
+  Go to Group Chat
+</Button>
+        <Button
+          onClick={() => navigate('/group-requests')}
+          className="bg-yellow-500 hover:bg-yellow-600"
+        >
+          Manage Join Requests
+        </Button>
+      </>
+    ) : isMember ? (
+      <Button
+        onClick={() => navigate(`/groups/${id}/chat`)} // Same fix here
+        className="bg-green-500 hover:bg-green-600"
+      >
+        Go to Group Chat
+      </Button>
+    ) : hasPendingRequest ? (
+      <Button
+        disabled
+        className="bg-yellow-400 cursor-not-allowed"
+      >
+        Request Pending Approval
+      </Button>
+    ) : group.isFull ? (
+      <Button
+        disabled
+        className="bg-red-400 cursor-not-allowed"
+      >
+        Group is Full
+      </Button>
+    ) : (
+      <Button
+        onClick={handleJoin}
+        disabled={requesting}
+        className="bg-blue-500 hover:bg-blue-600"
+      >
+        {requesting ? 'Sending Request...' : 'Request to Join'}
+      </Button>
+    )}
 
-              <Button
-                onClick={() => navigate('/groups')}
-                className="bg-gray-500 hover:bg-gray-600"
-              >
-                Back to Groups
-              </Button>
-            </div>
-          </div>
+    <Button
+      onClick={() => navigate('/groups')}
+      className="bg-gray-500 hover:bg-gray-600"
+    >
+      Back to Groups
+    </Button>
+  </div>
+</div>
         </div>
       </div>
     </div>

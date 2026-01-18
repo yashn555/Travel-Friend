@@ -8,15 +8,7 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach token to all requests
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Attach token to all requests - ONLY ONE INTERCEPTOR
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -30,11 +22,12 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// Response interceptor - FIXED
 api.interceptors.response.use(
   (response) => {
-    // ✅ IMPORTANT FIX: Return the data from backend
-    return response.data;
+    // Return the full response, not just response.data
+    // The backend sends: { success: true, token: "...", user: {...} }
+    return response;
   },
   (error) => {
     console.error('API Error:', error.response?.data || error.message);

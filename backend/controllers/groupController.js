@@ -1,7 +1,8 @@
-// server/controllers/groupController.js
+// backend/controllers/groupController.js
 const mongoose = require('mongoose');
 const Group = require('../models/Group');
 const User = require('../models/User');
+const Chat = require('../models/Chat'); // Add this import
 
 // @desc    Create a new group
 // @route   POST /api/groups/create
@@ -20,6 +21,8 @@ exports.createGroup = async (req, res) => {
       groupType,
       tags
     } = req.body;
+
+    console.log('📝 Creating new group:', { destination, userId });
 
     // Validate dates
     if (new Date(startDate) >= new Date(endDate)) {
@@ -60,6 +63,28 @@ exports.createGroup = async (req, res) => {
       }]
     });
 
+    console.log('✅ Group created:', group._id);
+
+  // ✅ AUTO-CREATE CHAT FOR THE GROUP
+try {
+  await Chat.create({
+    group: group._id,
+    participants: [userId],
+    messages: [{
+      sender: userId, // Use creator as sender
+      text: `Group "${destination}" has been created! Welcome to the chat.`,
+      timestamp: new Date(),
+      isSystemMessage: true
+    }],
+    lastActivity: new Date()
+  });
+  console.log(`✅ Chat automatically created for group: ${group.destination}`);
+} catch (chatError) {
+  console.error('❌ Error creating chat:', chatError.message);
+  console.error('Chat error details:', chatError);
+  // Don't fail the group creation if chat fails
+}
+
     // Populate creator info
     const populatedGroup = await Group.findById(group._id)
       .populate('createdBy', 'name profileImage')
@@ -72,7 +97,7 @@ exports.createGroup = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error creating group:', error);
+    console.error('❌ Error creating group:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Server error while creating group',
@@ -86,36 +111,30 @@ exports.createGroup = async (req, res) => {
 // @access  Private
 exports.getAllGroups = async (req, res) => {
   try {
+    console.log('📋 Fetching all groups');
+    
     const groups = await Group.find({
       status: { $in: ['planning', 'confirmed'] },
       endDate: { $gte: new Date() }
     })
     .populate('createdBy', 'name profileImage')
     .populate('currentMembers.user', 'name profileImage')
-    .populate('joinRequests.user', 'name profileImage')
     .sort({ createdAt: -1 });
 
     // Add isFull and availableSlots to each group
-    const enhancedGroups = groups.map(group => {
-      const approvedMembers = group.currentMembers.filter(m => m.status === 'approved');
-      const availableSlots = group.maxMembers - approvedMembers.length;
-      const isFull = availableSlots <= 0;
-      
-      return {
-        ...group.toObject(),
-        availableSlots,
-        isFull,
-        currentMembersCount: approvedMembers.length
-      };
-    });
+   const enhancedGroups = groups.map(group => {
+  return group.getEnhancedData();
+});
 
+    console.log(`✅ Found ${enhancedGroups.length} groups`);
+    
     res.status(200).json({
       success: true,
       data: enhancedGroups
     });
 
   } catch (error) {
-    console.error('Error fetching all groups:', error);
+    console.error('❌ Error fetching all groups:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Server error while fetching groups',
@@ -130,6 +149,7 @@ exports.getAllGroups = async (req, res) => {
 exports.getMyGroups = async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log(`📋 Fetching groups for user: ${userId}`);
 
     const groups = await Group.find({
       'currentMembers.user': userId,
@@ -139,13 +159,15 @@ exports.getMyGroups = async (req, res) => {
     .populate('currentMembers.user', 'name profileImage')
     .sort({ createdAt: -1 });
 
+    console.log(`✅ Found ${groups.length} groups for user`);
+    
     res.status(200).json({
       success: true,
       data: groups
     });
 
   } catch (error) {
-    console.error('Error fetching user groups:', error);
+    console.error('❌ Error fetching user groups:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Server error while fetching user groups',
@@ -153,6 +175,8 @@ exports.getMyGroups = async (req, res) => {
     });
   }
 };
+
+// In groupController.js - update getGroupById function:
 
 // @desc    Get group by ID
 // @route   GET /api/groups/:groupId
@@ -182,7 +206,7 @@ exports.getGroupById = async (req, res) => {
     const group = await Group.findById(groupId)
       .populate('createdBy', 'name profileImage email')
       .populate('currentMembers.user', 'name profileImage email')
-      .populate('joinRequests.user', 'name profileImage email');
+      .populate('joinRequests.user', 'name profileImage email status');
 
     if (!group) {
       return res.status(404).json({
@@ -191,19 +215,12 @@ exports.getGroupById = async (req, res) => {
       });
     }
 
-    // Calculate available slots
-    const approvedMembers = group.currentMembers.filter(m => m.status === 'approved');
-    const availableSlots = group.maxMembers - approvedMembers.length;
-    const isFull = availableSlots <= 0;
-
-    const enhancedGroup = {
-      ...group.toObject(),
-      availableSlots,
-      isFull,
-      currentMembersCount: approvedMembers.length
-    };
+    // ✅ FIXED: Use getEnhancedData method
+    const enhancedGroup = group.getEnhancedData();
 
     console.log('✅ Group found:', group.destination);
+    console.log('✅ Group members:', enhancedGroup.currentMembersCount);
+    
     res.status(200).json({
       success: true,
       data: enhancedGroup
@@ -320,7 +337,7 @@ exports.requestJoinGroup = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error sending join request:', error);
+    console.error('❌ Error sending join request:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Server error while sending join request',
@@ -358,7 +375,7 @@ exports.getJoinRequestsByGroup = async (req, res) => {
     // Find the group with populated join requests
     const group = await Group.findById(groupId)
       .populate('joinRequests.user', 'name email profileImage')
-      .populate('createdBy', 'name');
+      .populate('createdBy', 'name _id');
 
     if (!group) {
       return res.status(404).json({ 
@@ -423,6 +440,14 @@ exports.handleJoinRequest = async (req, res) => {
       });
     }
 
+    // Validate groupId format
+    if (!mongoose.Types.ObjectId.isValid(groupId) || !mongoose.Types.ObjectId.isValid(requestId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid ID format' 
+      });
+    }
+
     const group = await Group.findById(groupId);
     if (!group) {
       return res.status(404).json({ 
@@ -473,18 +498,71 @@ exports.handleJoinRequest = async (req, res) => {
 
       request.status = 'approved';
       
+      // ✅ AUTO-ADD USER TO GROUP CHAT
+      try {
+        // Find or create chat for this group
+        let chat = await Chat.findOne({ group: groupId });
+        
+        if (!chat) {
+          // Create new chat with all approved members
+          const participants = group.currentMembers
+            .filter(m => m.status === 'approved')
+            .map(m => m.user);
+          
+          chat = await Chat.create({
+            group: groupId,
+            participants: participants,
+            messages: [{
+              sender: null,
+              text: `Group chat created for "${group.destination}"`,
+              timestamp: new Date(),
+              isSystemMessage: true
+            }],
+            lastActivity: new Date()
+          });
+        } else {
+          // Add user to existing chat if not already there
+          const userId = request.user;
+          if (!chat.participants.includes(userId)) {
+            chat.participants.push(userId);
+            
+            // Add system message
+            const newUser = await User.findById(userId);
+            if (newUser) {
+              chat.messages.push({
+                sender: null,
+                text: `${newUser.name} has joined the chat`,
+                timestamp: new Date(),
+                isSystemMessage: true
+              });
+              
+              chat.lastActivity = new Date();
+              await chat.save();
+              console.log(`✅ User ${newUser.name} added to group chat`);
+            }
+          }
+        }
+      } catch (chatError) {
+        console.error('❌ Error adding user to chat:', chatError.message);
+        // Don't fail the approval if chat addition fails
+      }
+      
       // Notify the user about approval
       const user = await User.findById(request.user);
       if (user) {
         user.addNotification(
           'trip_update',
           'Join Request Approved',
-          `Your request to join ${group.destination} trip has been approved!`
+          `Your request to join ${group.destination} trip has been approved! You can now access the group chat.`
         );
         await user.save();
       }
+      
+      console.log(`✅ Request approved: ${request.user} added to ${group.destination}`);
+      
     } else if (action === 'reject') {
       request.status = 'rejected';
+      request.respondedAt = new Date();
       
       // Notify the user about rejection
       const user = await User.findById(request.user);
@@ -496,6 +574,8 @@ exports.handleJoinRequest = async (req, res) => {
         );
         await user.save();
       }
+      
+      console.log(`❌ Request rejected: ${request.user} for ${group.destination}`);
     }
 
     await group.save();
@@ -506,11 +586,122 @@ exports.handleJoinRequest = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error handling join request:', error);
+    console.error('❌ Error handling join request:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Server error while handling join request',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// @desc    Remove member from group
+// @route   DELETE /api/groups/:groupId/members/:userId
+// @access  Private (Group admin only)
+exports.removeMember = async (req, res) => {
+  try {
+    const { groupId, userId } = req.params;
+    const adminId = req.user.id;
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if requester is group creator
+    if (group.createdBy.toString() !== adminId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group creator can remove members'
+      });
+    }
+
+    // Check if trying to remove creator
+    if (userId === group.createdBy.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot remove group creator'
+      });
+    }
+
+    // Remove from currentMembers
+    group.currentMembers = group.currentMembers.filter(
+      member => member.user.toString() !== userId
+    );
+
+    await group.save();
+
+    // Remove from chat if exists
+    try {
+      const chat = await Chat.findOne({ group: groupId });
+      if (chat) {
+        chat.participants = chat.participants.filter(
+          participant => participant.toString() !== userId
+        );
+        
+        // Add system message
+        const removedUser = await User.findById(userId);
+        if (removedUser) {
+          chat.messages.push({
+            sender: null,
+            text: `${removedUser.name} has been removed from the group`,
+            timestamp: new Date(),
+            isSystemMessage: true
+          });
+          
+          await chat.save();
+        }
+      }
+    } catch (chatError) {
+      console.error('Error updating chat:', chatError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Member removed successfully'
+    });
+
+  } catch (error) {
+    console.error('Error removing member:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while removing member'
+    });
+  }
+};
+// @desc    TEST: Get user's created groups
+// @route   GET /api/groups/my-created-groups
+// @access  Private
+exports.getMyCreatedGroups = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log(`🔍 TEST: Fetching groups created by user ${userId}`);
+
+    const groups = await Group.find({
+      createdBy: userId
+    })
+    .populate('createdBy', 'name profileImage')
+    .populate('currentMembers.user', 'name profileImage')
+    .populate('joinRequests.user', 'name profileImage email')
+    .sort({ createdAt: -1 });
+
+    console.log(`✅ TEST: Found ${groups.length} groups created by user`);
+
+    res.status(200).json({
+      success: true,
+      data: groups,
+      user: { id: userId }
+    });
+
+  } catch (error) {
+    console.error('❌ TEST Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Test endpoint error',
+      error: error.message
     });
   }
 };

@@ -155,14 +155,14 @@ const GroupListPage = () => {
                       View Details
                     </button>
                     
-                    {isMember ? (
-                      <button 
-                        onClick={() => navigate(`/groups/${group._id}/chat`)}
-                        className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded text-sm"
-                      >
-                        Go to Chat
-                      </button>
-                    ) : isCreator ? (
+                   {isMember ? (
+  <button 
+    onClick={() => navigate(`/groups/${group._id}/chat`)} // Fixed route
+    className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded text-sm"
+  >
+    Go to Chat
+  </button>
+) : isCreator ? (
                       <button 
                         onClick={() => navigate(`/groups/${group._id}`)}
                         className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded text-sm"

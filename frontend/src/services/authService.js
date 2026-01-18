@@ -5,7 +5,7 @@ export const registerUser = async (userData) => {
   try {
     const response = await api.post('/auth/register', userData);
     console.log('✅ Registration API response:', response);
-    return response; // This is now the actual data
+    return response.data; // Return only the data part
   } catch (error) {
     console.error('❌ Registration API error:', error);
     throw error;
@@ -17,23 +17,25 @@ export const verifyOTP = async (userId, otp) => {
   try {
     console.log('🚀 Calling verifyOTP with:', { userId, otp });
     const response = await api.post('/auth/verify-otp', { userId, otp });
-    console.log('✅ Verify OTP API response:', response);
+    console.log('✅ Verify OTP API full response:', response);
+    console.log('📝 Verify OTP response data:', response.data);
     
     // Store token if received
-    if (response.token) {
-      localStorage.setItem('token', response.token);
+    if (response.data && response.data.token) {
+      localStorage.setItem('token', response.data.token);
       console.log('🔐 Token stored in localStorage');
     }
     
     // Store user if received
-    if (response.user) {
-      localStorage.setItem('user', JSON.stringify(response.user));
+    if (response.data && response.data.user) {
+      localStorage.setItem('user', JSON.stringify(response.data.user));
       console.log('👤 User stored in localStorage');
     }
     
-    return response;
+    return response.data; // Return only the data part
   } catch (error) {
     console.error('❌ Verify OTP API error:', error);
+    console.error('Error response:', error.response?.data);
     throw error;
   }
 };
@@ -43,7 +45,7 @@ export const resendOTP = async (userId) => {
   try {
     const response = await api.post('/auth/resend-otp', { userId });
     console.log('✅ Resend OTP API response:', response);
-    return response;
+    return response.data; // Return only the data part
   } catch (error) {
     console.error('❌ Resend OTP API error:', error);
     throw error;
@@ -53,20 +55,25 @@ export const resendOTP = async (userId) => {
 // Login user
 export const loginUser = async (credentials) => {
   try {
+    console.log('🚀 Sending login request with:', credentials);
     const response = await api.post('/auth/login', credentials);
-    console.log('✅ Login API response:', response);
+    console.log('✅ Login API full response:', response);
+    console.log('📝 Login response data:', response.data);
     
-    if (response.token) {
-      localStorage.setItem('token', response.token);
+    if (response.data && response.data.token) {
+      localStorage.setItem('token', response.data.token);
+      console.log('🔐 Token stored in localStorage');
     }
     
-    if (response.user) {
-      localStorage.setItem('user', JSON.stringify(response.user));
+    if (response.data && response.data.user) {
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      console.log('👤 User stored in localStorage');
     }
     
-    return response;
+    return response.data; // Return only the data part
   } catch (error) {
     console.error('❌ Login API error:', error);
+    console.error('Error response:', error.response?.data);
     throw error;
   }
 };
@@ -76,7 +83,7 @@ export const getCurrentUser = async () => {
   try {
     const response = await api.get('/auth/me');
     console.log('✅ Get current user API response:', response);
-    return response;
+    return response.data; // Return only the data part
   } catch (error) {
     console.error('❌ Get current user API error:', error);
     throw error;

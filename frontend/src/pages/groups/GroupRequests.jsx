@@ -1,6 +1,6 @@
-// src/pages/groups/GroupRequests.jsx - FIXED VERSION
+// frontend/src/pages/groups/GroupRequests.jsx
 import React, { useEffect, useState } from 'react';
-import { getMyGroups, handleJoinRequest, getPendingRequests } from '../../services/groupService';
+import { getMyGroups, handleJoinRequest } from '../../services/groupService';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -8,47 +8,109 @@ import Loader from '../../components/common/Loader';
 
 const GroupRequests = () => {
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
+  const { user: authUser } = useSelector((state) => state.auth);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [debugInfo, setDebugInfo] = useState('');
+  
+  // Get user from multiple sources
+  const getUserId = () => {
+    // Try Redux first
+    if (authUser?._id) return authUser._id;
+    if (authUser?.id) return authUser.id;
+    
+    // Try localStorage
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const parsed = JSON.parse(storedUser);
+        return parsed._id || parsed.id || parsed.userId;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  };
+  
+  const userId = getUserId();
 
   const fetchGroupsWithRequests = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Fetching groups for user:', user?._id);
+      setDebugInfo('🔄 Starting to fetch groups...');
       
+      console.log('🔄 Auth User from Redux:', authUser);
+      console.log('🔄 Extracted User ID:', userId);
+      
+      if (!userId) {
+        setDebugInfo('❌ No user ID found. Please log in again.');
+        setGroups([]);
+        setLoading(false);
+        return;
+      }
+
       // Get all groups where user is a member
       const allGroups = await getMyGroups();
-      console.log('📋 All groups:', allGroups);
+      console.log('📋 All groups data:', allGroups);
+      setDebugInfo(`Found ${allGroups?.length || 0} groups total`);
       
       if (!allGroups || allGroups.length === 0) {
         console.log('ℹ️ No groups found');
         setGroups([]);
+        setDebugInfo('No groups found for user');
         return;
       }
       
       // Filter groups where user is the creator
       const adminGroups = (allGroups || []).filter(group => {
-        const isCreator = group.createdBy?._id === user?._id;
-        console.log(`Group: ${group.destination}, Creator: ${group.createdBy?._id}, Is Creator: ${isCreator}`);
+        // Check if user is the creator
+        const groupCreatorId = group.createdBy?._id || group.createdBy;
+        const isCreator = groupCreatorId === userId;
+        
+        console.log(`Group: ${group.destination}, Creator ID: ${groupCreatorId}, User ID: ${userId}, Is Creator: ${isCreator}`);
         return isCreator;
       });
       
-      console.log('👑 Admin groups:', adminGroups);
+      console.log('👑 Admin groups found:', adminGroups);
+      setDebugInfo(`Found ${adminGroups.length} admin groups`);
+      
+      if (adminGroups.length === 0) {
+        setGroups([]);
+        setDebugInfo('User is not the creator of any group');
+        return;
+      }
       
       // Fetch join requests for each admin group
       const groupsWithRequests = await Promise.all(
         adminGroups.map(async (group) => {
           try {
             console.log(`📨 Fetching requests for group ${group._id}: ${group.destination}`);
-            const requestsData = await getPendingRequests(group._id);
-            console.log(`✅ Requests for ${group.destination}:`, requestsData);
             
-            return {
-              ...group,
-              joinRequests: requestsData || []
-            };
+            // Try to fetch from API endpoint
+            const response = await fetch(`http://localhost:5000/api/groups/${group._id}/requests`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (!response.ok) {
+              console.log(`⚠️ No requests API for group ${group._id}: ${response.status}`);
+              return { ...group, joinRequests: [] };
+            }
+            
+            const data = await response.json();
+            console.log(`✅ Requests for ${group.destination}:`, data);
+            
+            if (data.success) {
+              return {
+                ...group,
+                joinRequests: data.data || []
+              };
+            } else {
+              return { ...group, joinRequests: [] };
+            }
           } catch (error) {
             console.error(`❌ Error fetching requests for group ${group._id}:`, error.message);
             return { ...group, joinRequests: [] };
@@ -56,23 +118,44 @@ const GroupRequests = () => {
         })
       );
       
-      console.log('📊 Final groups with requests:', groupsWithRequests);
-      setGroups(groupsWithRequests);
+      // Filter groups that actually have pending requests
+      const groupsWithPendingRequests = groupsWithRequests.filter(group => {
+        const pending = group.joinRequests?.filter(req => req.status === 'pending') || [];
+        return pending.length > 0;
+      });
+      
+      console.log('📊 Groups with pending requests:', groupsWithPendingRequests.length);
+      setGroups(groupsWithPendingRequests);
+      
+      const totalPending = groupsWithPendingRequests.reduce((sum, g) => {
+        return sum + (g.joinRequests?.filter(r => r.status === 'pending').length || 0);
+      }, 0);
+      
+      setDebugInfo(`Found ${groupsWithPendingRequests.length} groups with ${totalPending} pending requests`);
       
     } catch (error) {
-      console.error('❌ Error fetching groups:', error);
+      console.error('❌ Error in fetchGroupsWithRequests:', error);
       toast.error('Failed to load join requests');
       setGroups([]);
+      setDebugInfo(`Error: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (user?._id) {
+    console.log('🔍 useEffect triggered, checking user...');
+    console.log('🔍 LocalStorage token exists:', !!localStorage.getItem('token'));
+    
+    if (userId) {
+      console.log('✅ User ID available:', userId);
       fetchGroupsWithRequests();
+    } else {
+      console.log('❌ No user ID available');
+      setLoading(false);
+      setDebugInfo('No user logged in or user ID not found');
     }
-  }, [user]);
+  }, [authUser]);
 
   const handleRequest = async (groupId, requestId, action) => {
     try {
@@ -96,9 +179,10 @@ const GroupRequests = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
+      <div className="flex flex-col justify-center items-center h-64">
         <Loader size="lg" />
         <span className="ml-3 text-gray-600">Loading requests...</span>
+        <span className="mt-2 text-sm text-gray-500">{debugInfo}</span>
       </div>
     );
   }
@@ -125,35 +209,48 @@ const GroupRequests = () => {
         )}
       </div>
       
+      {/* Debug Info - Always show */}
+      <div className="mb-6 p-4 bg-gray-100 rounded-lg">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="font-semibold text-gray-700">Debug Information</h3>
+            <p className="text-sm text-gray-600">{debugInfo}</p>
+            <p className="text-sm text-gray-600">User ID: {userId || 'Not found'}</p>
+          </div>
+          <button 
+            onClick={() => {
+              console.log('Debug Logs:', {
+                authUser,
+                userId,
+                groups,
+                debugInfo
+              });
+              fetchGroupsWithRequests();
+            }}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+      
       {groups.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-lg shadow">
           <div className="text-5xl mb-4">📋</div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">No Groups to Manage</h2>
-          <p className="text-gray-600 mb-6">Create a group to receive join requests</p>
-          <button 
-            onClick={() => navigate('/create-trip')}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium"
-          >
-            Create Your First Group
-          </button>
-        </div>
-      ) : totalPendingRequests === 0 ? (
-        <div className="text-center py-16 bg-white rounded-lg shadow">
-          <div className="text-5xl mb-4">✅</div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">No Pending Requests</h2>
-          <p className="text-gray-600">All join requests have been processed</p>
-          <div className="mt-6 flex gap-4 justify-center">
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">No Pending Requests Found</h2>
+          <p className="text-gray-600 mb-6">{debugInfo || 'You need to be the creator of a group to receive join requests'}</p>
+          <div className="flex gap-4 justify-center">
             <button 
-              onClick={() => navigate('/my-groups')}
-              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+              onClick={() => navigate('/create-trip')}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium"
             >
-              View My Groups
+              Create a Group
             </button>
             <button 
-              onClick={fetchGroupsWithRequests}
-              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded"
+              onClick={() => navigate('/my-groups')}
+              className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium"
             >
-              Refresh
+              View My Groups
             </button>
           </div>
         </div>
@@ -161,8 +258,6 @@ const GroupRequests = () => {
         <div className="space-y-8">
           {groups.map(group => {
             const pendingRequests = group.joinRequests?.filter(req => req.status === 'pending') || [];
-            
-            if (pendingRequests.length === 0) return null;
             
             return (
               <div key={group._id} className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
@@ -176,13 +271,13 @@ const GroupRequests = () => {
                         </p>
                         <span className="text-gray-500">•</span>
                         <p className="text-gray-600">
-                          {group.currentMembers?.filter(m => m.status === 'approved').length || 0}/{group.maxMembers} members
+                          Members: {group.currentMembers?.filter(m => m.status === 'approved').length || 0}/{group.maxMembers}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
                       <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">
-                        {pendingRequests.length} request{pendingRequests.length > 1 ? 's' : ''}
+                        {pendingRequests.length} pending request{pendingRequests.length > 1 ? 's' : ''}
                       </span>
                       <button 
                         onClick={() => navigate(`/groups/${group._id}`)}
@@ -208,7 +303,8 @@ const GroupRequests = () => {
                               </div>
                               <div>
                                 <h4 className="font-bold text-gray-800">{req.user?.name || 'Unknown User'}</h4>
-                                <p className="text-gray-500 text-sm">{req.user?.email}</p>
+                                <p className="text-gray-500 text-sm">{req.user?.email || 'No email'}</p>
+                                <p className="text-gray-500 text-sm">Requested: {new Date(req.requestedAt || req.createdAt).toLocaleDateString()}</p>
                               </div>
                             </div>
                             
@@ -218,11 +314,6 @@ const GroupRequests = () => {
                                   <span className="font-medium">Message: </span> 
                                   {req.message || 'No message provided'}
                                 </p>
-                              </div>
-                              <div className="flex items-center text-gray-500 text-sm">
-                                <span className="bg-gray-100 px-2 py-1 rounded">
-                                  Requested on: {new Date(req.requestedAt || req.createdAt).toLocaleDateString()}
-                                </span>
                               </div>
                             </div>
                           </div>
@@ -251,45 +342,6 @@ const GroupRequests = () => {
               </div>
             );
           })}
-        </div>
-      )}
-      
-      {/* Debug Panel - Remove in production */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mt-8 p-4 bg-gray-100 rounded-lg border border-gray-300">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="font-bold text-gray-700">Debug Information</h3>
-            <button 
-              onClick={fetchGroupsWithRequests}
-              className="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded"
-            >
-              Refresh Data
-            </button>
-          </div>
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-gray-600">User ID:</p>
-              <p className="font-mono text-xs">{user?._id}</p>
-            </div>
-            <div>
-              <p className="text-gray-600">Total Groups:</p>
-              <p className="font-bold">{groups.length}</p>
-            </div>
-            <div>
-              <p className="text-gray-600">Pending Requests:</p>
-              <p className="font-bold">{totalPendingRequests}</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => {
-              console.log('📊 Groups Data:', groups);
-              console.log('👤 User:', user);
-              console.log('🔄 Refreshing...');
-            }}
-            className="mt-3 text-sm text-blue-500 hover:text-blue-600"
-          >
-            Log Data to Console
-          </button>
         </div>
       )}
     </div>

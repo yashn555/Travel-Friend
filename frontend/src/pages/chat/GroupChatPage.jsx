@@ -1,6 +1,6 @@
 // frontend/src/pages/chat/GroupChatPage.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom'; // FIXED: Added useParams
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { getGroupChat, sendMessage } from '../../services/chatService';
@@ -9,7 +9,7 @@ import Loader from '../../components/common/Loader';
 import Button from '../../components/common/Button';
 
 const GroupChatPage = () => {
-  const { groupId } = useParams();
+  const { id } = useParams(); // FIXED: Changed from groupId to id
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   
@@ -22,43 +22,66 @@ const GroupChatPage = () => {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    // Validate groupId
-    if (!groupId || groupId === 'undefined') {
+    // Validate groupId (now called id)
+    if (!id || id === 'undefined') {
       toast.error('Invalid group ID');
       navigate('/my-groups');
       return;
     }
 
+    console.log('🔍 GroupChatPage mounted with id:', id);
+    console.log('🔍 Current URL:', window.location.href);
+    
     fetchChatData();
-  }, [groupId, navigate]);
+  }, [id, navigate]); // FIXED: Changed dependency from groupId to id
 
   const fetchChatData = async () => {
     try {
       setLoading(true);
       
-      // Fetch group details
-      const groupData = await getGroupById(groupId);
+      // Validate id
+      if (!id || id === 'undefined') {
+        toast.error('Invalid group ID');
+        navigate('/my-groups');
+        return;
+      }
+
+      console.log('🔍 Fetching chat data for group:', id);
+      console.log('👤 Current user:', user);
+      
+      // Fetch group details first
+      const groupData = await getGroupById(id);
       setGroup(groupData);
       
       // Check if user is a member
-      const isMember = groupData.currentMembers?.some(
-        member => member.user?._id === user?._id
-      );
+      const isMember = groupData.currentMembers?.some(member => {
+        // Check both possible ID locations
+        const memberUserId = member.user?._id || member.user;
+        const currentUserId = user?._id || user?.id;
+        
+        console.log(`Checking member: ${memberUserId} vs user: ${currentUserId}`);
+        return memberUserId === currentUserId && member.status === 'approved';
+      });
+      
+      console.log(`Is user member? ${isMember}`);
       
       if (!isMember) {
-        toast.error('You must be a member to access group chat');
-        navigate(`/groups/${groupId}`);
+        console.log('❌ User is not a member, redirecting...');
+        toast.error('You must be a member of the group to access the chat');
+        navigate(`/groups/${id}`);
         return;
       }
       
       // Fetch chat
-      const chatData = await getGroupChat(groupId);
+      console.log('✅ User is member, fetching chat...');
+      const chatData = await getGroupChat(id);
       setChat(chatData);
       
     } catch (error) {
-      console.error('Error fetching chat:', error);
+      console.error('❌ Error fetching chat:', error);
+      console.error('Error response:', error.response?.data);
       toast.error(error.response?.data?.message || 'Failed to load chat');
-      navigate(`/groups/${groupId}`);
+      navigate(`/groups/${id}`);
     } finally {
       setLoading(false);
     }
@@ -79,10 +102,10 @@ const GroupChatPage = () => {
     
     try {
       setSending(true);
-      await sendMessage(groupId, message);
+      await sendMessage(id, message);
       
       // Refresh chat
-      const chatData = await getGroupChat(groupId);
+      const chatData = await getGroupChat(id);
       setChat(chatData);
       setMessage('');
       
@@ -114,7 +137,7 @@ const GroupChatPage = () => {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center">
           <button
-            onClick={() => navigate(`/groups/${groupId}`)}
+            onClick={() => navigate(`/groups/${id}`)}
             className="mr-4 text-gray-600 hover:text-gray-800"
           >
             ← Back
@@ -130,7 +153,7 @@ const GroupChatPage = () => {
         </div>
         
         <Button
-          onClick={() => navigate(`/groups/${groupId}`)}
+          onClick={() => navigate(`/groups/${id}`)}
           className="bg-gray-500 hover:bg-gray-600"
         >
           Group Details
