@@ -9,11 +9,15 @@ const Chat = require('../models/Chat'); // Add this import
 // @access  Private
 // In groupController.js - update createGroup function:
 
+// In groupController.js - update createGroup function:
+
 exports.createGroup = async (req, res) => {
   try {
     const userId = req.user.id;
     const {
       destination,
+      startingLocation,
+      destinationLocation,
       description,
       startDate,
       endDate,
@@ -26,7 +30,26 @@ exports.createGroup = async (req, res) => {
       tags
     } = req.body;
 
-    console.log('📝 Creating enhanced group:', { destination, userId });
+    console.log('📝 Creating enhanced group with locations:', { 
+      destination, 
+      startingLocation: startingLocation?.address,
+      userId 
+    });
+
+    // 🔥 NEW: Validate both locations are provided
+    if (!startingLocation || !startingLocation.address || !startingLocation.coordinates) {
+      return res.status(400).json({
+        success: false,
+        message: 'Starting location is required for route planning'
+      });
+    }
+
+    if (!destinationLocation || !destinationLocation.address || !destinationLocation.coordinates) {
+      return res.status(400).json({
+        success: false,
+        message: 'Destination location with coordinates is required'
+      });
+    }
 
     // Validate dates
     if (new Date(startDate) >= new Date(endDate)) {
@@ -47,6 +70,14 @@ exports.createGroup = async (req, res) => {
     // Build group object
     const groupData = {
       destination,
+      startingLocation: {
+        address: startingLocation.address,
+        coordinates: startingLocation.coordinates
+      },
+      destinationLocation: {
+        address: destinationLocation.address || destination,
+        coordinates: destinationLocation.coordinates
+      },
       description,
       startDate,
       endDate,
@@ -88,7 +119,7 @@ exports.createGroup = async (req, res) => {
 
     const group = await Group.create(groupData);
 
-    console.log('✅ Enhanced group created:', group._id);
+    console.log('✅ Enhanced group created with locations:', group._id);
 
     // Auto-create chat for the group
     try {
@@ -97,7 +128,7 @@ exports.createGroup = async (req, res) => {
         participants: [userId],
         messages: [{
           sender: userId,
-          text: `Group "${destination}" has been created! Welcome to the chat. Let's plan our adventure! ✈️`,
+          text: `Group "${destination}" has been created! Starting from ${startingLocation.address} to ${destination}. Let's plan our adventure! ✈️`,
           timestamp: new Date(),
           isSystemMessage: true
         }],
@@ -123,6 +154,25 @@ exports.createGroup = async (req, res) => {
       currentMembersCount: 1,
       durationDays: Math.ceil((new Date(populatedGroup.endDate) - new Date(populatedGroup.startDate)) / (1000 * 60 * 60 * 24))
     };
+
+    // Calculate distance for the enhanced group
+    if (populatedGroup.startingLocation && populatedGroup.destinationLocation) {
+      const start = populatedGroup.startingLocation.coordinates;
+      const dest = populatedGroup.destinationLocation.coordinates;
+      
+      // Haversine formula
+      const R = 6371;
+      const dLat = (dest.lat - start.lat) * Math.PI / 180;
+      const dLng = (dest.lng - start.lng) * Math.PI / 180;
+      
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(start.lat * Math.PI / 180) * Math.cos(dest.lat * Math.PI / 180) * 
+        Math.sin(dLng/2) * Math.sin(dLng/2);
+      
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      enhancedGroup.distanceKm = Math.round(R * c);
+    }
 
     res.status(201).json({
       success: true,

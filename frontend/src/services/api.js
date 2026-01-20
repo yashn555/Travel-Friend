@@ -105,4 +105,24 @@ export const deleteExpense = (expenseId) =>
 export const getRouteSuggestions = (groupId, startingCity) => 
   api.get(`/trips/routes/${groupId}`, { params: { startingCity } }).then(res => res.data);
 
+// Search users
+export const searchUsers = async (query) => {
+  try {
+    const response = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// Follow user
+export const followUser = async (userId) => {
+  try {
+    const response = await api.post(`/users/follow/${userId}`);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
 export default api;

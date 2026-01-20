@@ -1,5 +1,5 @@
 // frontend/src/pages/trips/CreateTripPage.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createGroup } from '../../services/groupService';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -14,8 +14,11 @@ import {
   FaPaw,
   FaVenusMars,
   FaExclamationCircle,
-  FaCheckCircle
+  FaCheckCircle,
+  FaLocationArrow
 } from 'react-icons/fa';
+import LocationPicker from '../../components/location/LocationPicker';
+import useGeoLocation from '../../hooks/useGeoLocation';
 
 const CreateTripPage = () => {
   const navigate = useNavigate();
@@ -23,6 +26,9 @@ const CreateTripPage = () => {
   const [formData, setFormData] = useState({
     // Basic Info
     destination: '',
+    startingLocation: '',
+    startingLocationCoords: null,
+    destinationCoords: null,
     description: '',
     startDate: '',
     endDate: '',
@@ -57,6 +63,9 @@ const CreateTripPage = () => {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState({});
+  
+  // Get user's current location
+  const { location: userLocation, error: locationError, getLocation } = useGeoLocation();
   
   // Options
   const travelStyles = [
@@ -94,11 +103,33 @@ const CreateTripPage = () => {
     { id: 'mountains', label: 'Mountains', icon: '🏔️' }
   ];
 
+  // Auto-detect user's location on component mount
+  useEffect(() => {
+    getLocation();
+  }, []);
+
+  // Set starting location if user grants permission
+  useEffect(() => {
+    if (userLocation && !formData.startingLocation) {
+      setFormData(prev => ({
+        ...prev,
+        startingLocation: `Your Current Location (${userLocation.city || 'Nearby'})`,
+        startingLocationCoords: {
+          lat: userLocation.latitude,
+          lng: userLocation.longitude
+        }
+      }));
+    }
+  }, [userLocation]);
+
   // Validation function
   const validateStep = (step) => {
     const newErrors = {};
     
     if (step === 1) {
+      if (!formData.startingLocation.trim()) {
+        newErrors.startingLocation = 'Where are you starting from? This is required for route planning! 🗺️';
+      }
       if (!formData.destination.trim()) {
         newErrors.destination = 'Where are you going? This helps others find your trip! 🌍';
       }
@@ -174,6 +205,34 @@ const CreateTripPage = () => {
     }
   };
 
+  const handleLocationSelect = (type, locationData) => {
+    if (type === 'starting') {
+      setFormData(prev => ({
+        ...prev,
+        startingLocation: locationData.address,
+        startingLocationCoords: {
+          lat: locationData.lat,
+          lng: locationData.lng
+        }
+      }));
+      if (errors.startingLocation) {
+        setErrors(prev => ({ ...prev, startingLocation: '' }));
+      }
+    } else if (type === 'destination') {
+      setFormData(prev => ({
+        ...prev,
+        destination: locationData.address,
+        destinationCoords: {
+          lat: locationData.lat,
+          lng: locationData.lng
+        }
+      }));
+      if (errors.destination) {
+        setErrors(prev => ({ ...prev, destination: '' }));
+      }
+    }
+  };
+
   const nextStep = () => {
     if (validateStep(step)) {
       setStep(step + 1);
@@ -217,6 +276,17 @@ const CreateTripPage = () => {
       return;
     }
     
+    // Validate both locations are provided
+    if (!formData.startingLocation || !formData.destination) {
+      setMessage('Please provide both starting location and destination! 🗺️');
+      return;
+    }
+    
+    if (!formData.startingLocationCoords || !formData.destinationCoords) {
+      setMessage('Please select valid locations using the location picker! 📍');
+      return;
+    }
+    
     try {
       setLoading(true);
       setMessage('Creating your travel squad... ✈️');
@@ -228,6 +298,14 @@ const CreateTripPage = () => {
       const groupData = {
         // Basic info
         destination: formData.destination,
+        startingLocation: {
+          address: formData.startingLocation,
+          coordinates: formData.startingLocationCoords
+        },
+        destinationLocation: {
+          address: formData.destination,
+          coordinates: formData.destinationCoords
+        },
         description: formData.description,
         startDate: formData.startDate,
         endDate: formData.endDate,
@@ -291,30 +369,75 @@ const CreateTripPage = () => {
         <p className="text-gray-600">Tell us about your trip. Be specific to find perfect travel buddies!</p>
       </div>
       
-      {/* Destination with Map Pin */}
-      <div className="relative">
-        <label className="block text-gray-700 mb-2 font-medium flex items-center">
-          <FaMapMarkerAlt className="mr-2 text-red-500" />
-          Where are you going? *
-        </label>
-        <input 
-          type="text" 
-          name="destination" 
-          placeholder="e.g., Goa beaches, Paris cafes, Bali waterfalls" 
-          value={formData.destination}
-          onChange={handleChange}
-          required 
-          className={`border-2 p-4 w-full rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg ${
-            errors.destination ? 'border-red-300 bg-red-50' : 'border-gray-200'
-          }`}
+      {/* Starting Location */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <label className="block text-gray-700 font-medium flex items-center">
+            <FaLocationArrow className="mr-2 text-green-500" />
+            Starting From *
+          </label>
+          <button
+            type="button"
+            onClick={getLocation}
+            className="text-sm bg-green-100 text-green-700 px-3 py-1 rounded-lg hover:bg-green-200 flex items-center"
+          >
+            <FaLocationArrow className="mr-1" />
+            Use My Location
+          </button>
+        </div>
+        
+        <LocationPicker
+          id="starting-location"
+          placeholder="e.g., Mumbai, Delhi, Bangalore or your current city"
+          value={formData.startingLocation}
+          onLocationSelect={(data) => handleLocationSelect('starting', data)}
+          initialLocation={userLocation ? {
+            lat: userLocation.latitude,
+            lng: userLocation.longitude,
+            address: `Your Current Location (${userLocation.city || 'Nearby'})`
+          } : null}
+          className={`${errors.startingLocation ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
         />
+        
+        {errors.startingLocation && (
+          <div className="mt-2 flex items-center text-red-600 text-sm">
+            <FaExclamationCircle className="mr-2" />
+            {errors.startingLocation}
+          </div>
+        )}
+        <div className="text-sm text-gray-500">
+          {formData.startingLocationCoords ? 
+            `📍 Coordinates: ${formData.startingLocationCoords.lat.toFixed(4)}, ${formData.startingLocationCoords.lng.toFixed(4)}` : 
+            'Select where your journey begins for route planning'}
+        </div>
+      </div>
+      
+      {/* Destination with Map Pin */}
+      <div className="space-y-4">
+        <label className="block text-gray-700 font-medium flex items-center">
+          <FaMapMarkerAlt className="mr-2 text-red-500" />
+          Destination *
+        </label>
+        
+        <LocationPicker
+          id="destination"
+          placeholder="e.g., Goa beaches, Paris cafes, Bali waterfalls"
+          value={formData.destination}
+          onLocationSelect={(data) => handleLocationSelect('destination', data)}
+          className={`${errors.destination ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+        />
+        
         {errors.destination && (
           <div className="mt-2 flex items-center text-red-600 text-sm">
             <FaExclamationCircle className="mr-2" />
             {errors.destination}
           </div>
         )}
-        <div className="text-sm text-gray-500 mt-1">Pro tip: Be specific for better matches!</div>
+        <div className="text-sm text-gray-500">
+          {formData.destinationCoords ? 
+            `📍 Coordinates: ${formData.destinationCoords.lat.toFixed(4)}, ${formData.destinationCoords.lng.toFixed(4)}` : 
+            'Pro tip: Be specific for better matches!'}
+        </div>
       </div>
       
       {/* Description */}
@@ -389,6 +512,26 @@ const CreateTripPage = () => {
           )}
         </div>
       </div>
+      
+      {/* Route Preview (if both locations selected) */}
+      {formData.startingLocationCoords && formData.destinationCoords && (
+        <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl border border-blue-200">
+          <h4 className="font-bold text-blue-800 mb-2 flex items-center">
+            <FaMapMarkerAlt className="mr-2" />
+            Route Preview
+          </h4>
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <div className="font-medium text-green-600">📍 {formData.startingLocation}</div>
+              <div className="text-xs text-gray-500 mt-1">→</div>
+              <div className="font-medium text-red-600">🎯 {formData.destination}</div>
+            </div>
+            <div className="text-xs bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+              Route saved for planning
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -852,7 +995,7 @@ const CreateTripPage = () => {
               <div className="flex items-center">
                 <FaExclamationCircle className="text-blue-500 mr-2" />
                 <span className="text-sm text-blue-700">
-                  <span className="font-semibold">Note:</span> Fields marked with * are required. Fill them to find better travel matches! 🌟
+                  <span className="font-semibold">Note:</span> Fields marked with * are required. Both starting location and destination are needed for route planning! 🗺️
                 </span>
               </div>
             </div>
@@ -897,7 +1040,7 @@ const CreateTripPage = () => {
                 ) : (
                   <button 
                     type="submit" 
-                    disabled={loading}
+                    disabled={loading || !formData.startingLocationCoords || !formData.destinationCoords}
                     className="px-12 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 font-medium shadow-lg text-lg disabled:opacity-50"
                   >
                     {loading ? (
@@ -924,15 +1067,15 @@ const CreateTripPage = () => {
         {/* Quick Tips */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-xl border border-gray-200">
-            <div className="text-3xl mb-3">👥</div>
-            <h4 className="font-bold text-gray-800 mb-2">Better Matches</h4>
-            <p className="text-gray-600 text-sm">Detailed preferences help find travel buddies with similar vibes</p>
+            <div className="text-3xl mb-3">🗺️</div>
+            <h4 className="font-bold text-gray-800 mb-2">Route Planning</h4>
+            <p className="text-gray-600 text-sm">Starting location enables accurate route planning and distance calculation</p>
           </div>
           
           <div className="bg-white p-6 rounded-xl border border-gray-200">
-            <div className="text-3xl mb-3">🔒</div>
-            <h4 className="font-bold text-gray-800 mb-2">Safe & Verified</h4>
-            <p className="text-gray-600 text-sm">All members are verified and you control who joins</p>
+            <div className="text-3xl mb-3">👥</div>
+            <h4 className="font-bold text-gray-800 mb-2">Better Matches</h4>
+            <p className="text-gray-600 text-sm">Detailed preferences help find travel buddies with similar vibes</p>
           </div>
           
           <div className="bg-white p-6 rounded-xl border border-gray-200">

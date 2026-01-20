@@ -6,6 +6,7 @@ const cors = require('cors');
 const path = require('path');
 const http = require('http');
 const socketio = require('socket.io');
+const fileUpload = require('express-fileupload'); // ✅ MOVE THIS UP HERE
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -13,7 +14,6 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const chatRoutes = require('./routes/chatRoutes');
-
 const tripRoutes = require('./routes/tripRoutes');
 
 // Initialize express
@@ -33,6 +33,13 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(fileUpload({ // ✅ NOW fileUpload IS DEFINED
+  useTempFiles: true,
+  tempFileDir: '/tmp/',
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  abortOnLimit: true,
+  createParentPath: true
+}));
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

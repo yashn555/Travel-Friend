@@ -37,6 +37,9 @@ export const getMyGroups = async () => {
 };
 
 // Create new group
+// In frontend/src/services/groupService.js - update createGroup function:
+
+// Create new group
 export const createGroup = async (groupData) => {
   const response = await api.post('/groups/create', groupData);
   return response.data;

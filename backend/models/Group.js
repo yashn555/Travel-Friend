@@ -8,6 +8,32 @@ const GroupSchema = new mongoose.Schema({
     trim: true
   },
 
+  // 🔥 NEW: Starting Location (required for route planning)
+  startingLocation: {
+    address: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    coordinates: {
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true }
+    }
+  },
+
+  // 🔥 NEW: Destination with coordinates
+  destinationLocation: {
+    address: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    coordinates: {
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true }
+    }
+  },
+
   description: {
     type: String,
     required: true,
@@ -243,6 +269,29 @@ const GroupSchema = new mongoose.Schema({
   toObject: { virtuals: false }
 });
 
+// 🔥 NEW: Calculate distance between start and destination (in km)
+GroupSchema.virtual('distance').get(function() {
+  if (!this.startingLocation || !this.destinationLocation) {
+    return 0;
+  }
+  
+  const start = this.startingLocation.coordinates;
+  const dest = this.destinationLocation.coordinates;
+  
+  // Haversine formula to calculate distance
+  const R = 6371; // Earth's radius in km
+  const dLat = (dest.lat - start.lat) * Math.PI / 180;
+  const dLng = (dest.lng - start.lng) * Math.PI / 180;
+  
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(start.lat * Math.PI / 180) * Math.cos(dest.lat * Math.PI / 180) * 
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return Math.round(R * c);
+});
+
 // 🔥 FIXED: SAFE VIRTUAL FOR AVAILABLE SLOTS
 GroupSchema.virtual('availableSlotsCalc').get(function() {
   if (!this.currentMembers || !Array.isArray(this.currentMembers)) {
@@ -345,12 +394,32 @@ GroupSchema.methods.getEnhancedData = function() {
       groupObj.isActive = daysUntil <= 0 && groupObj.status === 'confirmed';
     }
     
+    // Calculate distance between start and destination
+    if (groupObj.startingLocation && groupObj.destinationLocation) {
+      const start = groupObj.startingLocation.coordinates;
+      const dest = groupObj.destinationLocation.coordinates;
+      
+      // Haversine formula
+      const R = 6371;
+      const dLat = (dest.lat - start.lat) * Math.PI / 180;
+      const dLng = (dest.lng - start.lng) * Math.PI / 180;
+      
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(start.lat * Math.PI / 180) * Math.cos(dest.lat * Math.PI / 180) * 
+        Math.sin(dLng/2) * Math.sin(dLng/2);
+      
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      groupObj.distanceKm = Math.round(R * c);
+    }
+    
   } catch (error) {
     console.error('Error in getEnhancedData:', error);
     groupObj.availableSlots = groupObj.maxMembers || 0;
     groupObj.isFull = false;
     groupObj.currentMembersCount = 0;
     groupObj.averageRating = 0;
+    groupObj.distanceKm = 0;
   }
   
   return groupObj;
@@ -442,5 +511,8 @@ GroupSchema.index({ 'travelPreferences.interests': 1 });
 GroupSchema.index({ 'travelPreferences.genderPreference': 1 });
 GroupSchema.index({ startDate: 1 });
 GroupSchema.index({ 'budget.min': 1, 'budget.max': 1 });
+// 🔥 NEW: Index for location-based search
+GroupSchema.index({ 'startingLocation.coordinates': '2dsphere' });
+GroupSchema.index({ 'destinationLocation.coordinates': '2dsphere' });
 
 module.exports = mongoose.model('Group', GroupSchema);

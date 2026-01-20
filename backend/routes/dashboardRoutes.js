@@ -10,6 +10,7 @@ router.use(authMiddleware.protect);
 
 // Dashboard routes
 router.get('/', dashboardController.getDashboard);
+router.get('/stats', dashboardController.getStats); // ADD THIS LINE
 router.get('/groups', dashboardController.getGroups);
 router.post('/groups/:groupId/join', dashboardController.requestToJoin);
 

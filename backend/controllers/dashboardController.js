@@ -50,32 +50,37 @@ exports.getDashboard = async (req, res) => {
           req => req.user && req.user._id.toString() === req.user.id.toString() && req.status === 'pending'
         );
         
-        return {
-          id: group._id,
-          destination: group.destination,
-          description: group.description,
-          startDate: group.startDate,
-          endDate: group.endDate,
-          duration: Math.ceil((group.endDate - group.startDate) / (1000 * 60 * 60 * 24)),
-          budget: group.budget,
-          maxMembers: group.maxMembers,
-          currentMembers: group.currentMembers,
-          currentMembersCount: approvedMembers.length,
-          availableSlots: availableSlots,
-          isFull: isFull,
-          groupType: group.groupType,
-          status: group.status || 'planning',
-          tags: group.tags,
-          createdBy: {
-            id: group.createdBy._id,
-            name: group.groupType === 'anonymous' ? 'Anonymous Traveler' : group.createdBy.name,
-            profileImage: group.groupType === 'anonymous' ? 'anonymous-profile.jpg' : group.createdBy.profileImage
-          },
-          isMember: isMember,
-          isCreator: isCreator,
-          hasPendingRequest: hasPendingRequest,
-          createdAt: group.createdAt
-        };
+       return {
+  id: group._id,
+  destination: group.destination,
+  description: group.description,
+  startDate: group.startDate,
+  endDate: group.endDate,
+  duration: Math.ceil((group.endDate - group.startDate) / (1000 * 60 * 60 * 24)),
+  budget: group.budget,
+  maxMembers: group.maxMembers,
+  currentMembers: group.currentMembers,
+  currentMembersCount: approvedMembers.length,
+  availableSlots: availableSlots,
+  isFull: isFull,
+  groupType: group.groupType,
+  status: group.status || 'planning',
+  tags: group.tags,
+  createdBy: {
+    id: group.createdBy._id,
+    name: group.groupType === 'anonymous' ? 'Anonymous Traveler' : group.createdBy.name,
+    profileImage: group.groupType === 'anonymous' ? 'anonymous-profile.jpg' : group.createdBy.profileImage
+  },
+  // ADD THIS SECTION:
+  startingLocation: group.startingLocation || null,
+  meetingPoint: group.meetingPoint || null,
+  // END OF ADDITION
+  isMember: isMember,
+  isCreator: isCreator,
+  hasPendingRequest: hasPendingRequest,
+  createdAt: group.createdAt
+};
+        
       }),
       myGroups: userGroups.map(trip => ({
         id: trip._id,
@@ -291,6 +296,94 @@ exports.requestToJoin = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while submitting join request',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+// @desc    Get dashboard stats
+// @route   GET /api/dashboard/stats
+// @access  Private
+exports.getStats = async (req, res) => {
+  try {
+    console.log('📊 Fetching dashboard stats for user:', req.user.id);
+    
+    const userId = req.user.id;
+    
+    // Get user's groups count
+    const groupsCount = await Group.countDocuments({
+      'currentMembers.user': userId,
+      'currentMembers.status': 'approved'
+    });
+    
+    // Get groups created by user
+    const createdGroups = await Group.countDocuments({
+      createdBy: userId
+    });
+    
+    // Get pending join requests for user's groups
+    const pendingRequests = await Group.aggregate([
+      {
+        $match: {
+          createdBy: mongoose.Types.ObjectId(userId)
+        }
+      },
+      {
+        $project: {
+          pendingCount: {
+            $size: {
+              $filter: {
+                input: '$joinRequests',
+                as: 'request',
+                cond: { $eq: ['$$request.status', 'pending'] }
+              }
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$pendingCount' }
+        }
+      }
+    ]);
+    
+    // Get upcoming trips
+    const upcomingTrips = await Group.countDocuments({
+      'currentMembers.user': userId,
+      startDate: { $gte: new Date() },
+      status: { $in: ['planning', 'confirmed'] }
+    });
+    
+    // Get user's recent activity
+    const recentActivity = await Group.find({
+      'currentMembers.user': userId
+    })
+    .select('destination startDate status updatedAt')
+    .sort({ updatedAt: -1 })
+    .limit(3)
+    .lean();
+    
+    const stats = {
+      groupsCount,
+      createdGroups,
+      pendingRequests: pendingRequests.length > 0 ? pendingRequests[0].total : 0,
+      upcomingTrips,
+      recentActivity
+    };
+    
+    console.log('✅ Dashboard stats fetched:', stats);
+    
+    res.status(200).json({
+      success: true,
+      data: stats
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching dashboard stats:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching dashboard stats',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
