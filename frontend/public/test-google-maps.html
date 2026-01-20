@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Maps Test</title>
+</head>
+<body>
+    <h1>Google Maps API Test</h1>
+    <input id="search" type="text" placeholder="Search places..." style="width: 300px; padding: 10px;">
+    
+    <script>
+        console.log('Testing Google Maps API...');
+        
+        function initMap() {
+            console.log('✅ Google Maps loaded successfully!');
+            
+            if (window.google && window.google.maps && window.google.maps.places) {
+                console.log('✅ All Google Maps objects available');
+                
+                const input = document.getElementById('search');
+                const autocomplete = new google.maps.places.Autocomplete(input, {
+                    types: ['geocode'],
+                    componentRestrictions: { country: 'in' }
+                });
+                
+                autocomplete.addListener('place_changed', () => {
+                    const place = autocomplete.getPlace();
+                    console.log('📍 Selected place:', place);
+                });
+                
+                console.log('✅ Autocomplete initialized');
+            } else {
+                console.error('❌ Google Maps objects not available');
+            }
+        }
+        
+        function loadError() {
+            console.error('❌ Failed to load Google Maps');
+        }
+        
+        // Load Google Maps
+        const script = document.createElement('script');
+        script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyDoKCyhFI1yVlf65JfuIhMUz0x30wHGf8A&libraries=places&callback=initMap';
+        script.async = true;
+        script.defer = true;
+        script.onerror = loadError;
+        
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>

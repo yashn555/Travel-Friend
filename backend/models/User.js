@@ -32,7 +32,15 @@ const UserSchema = new mongoose.Schema({
       'Please provide a valid 10-digit mobile number'
     ]
   },
-  
+  upiId: {
+  type: String,
+  trim: true,
+  match: [
+    /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/,
+    'Please provide a valid UPI ID (e.g., username@upi)'
+  ],
+  default: ''
+},
   password: {
     type: String,
     required: [true, 'Please provide a password'],

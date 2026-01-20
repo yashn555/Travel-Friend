@@ -10,13 +10,44 @@ const ProfilePage = () => {
   const [updating, setUpdating] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
 
-  const [formData, setFormData] = useState({
-    name: '',
-    bio: '',
-    town: '',
-    state: '',
-    mobile: '',
-    travelPreferences: {
+ const [formData, setFormData] = useState({
+  name: '',
+  bio: '',
+  town: '',
+  state: '',
+  mobile: '',
+  upiId: '', // Add this
+  travelPreferences: {
+    adventure: false,
+    luxury: false,
+    budget: false,
+    solo: false,
+    group: false,
+    beach: false,
+    mountain: false,
+    cultural: false
+  }
+});
+
+  // Fetch profile
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true);
+        const res = await getProfile();
+        console.log('Profile response:', res);
+        
+       if (res.success && res.profile) {
+  const data = res.profile;
+  setProfile(data);
+  setFormData({
+    name: data.name || '',
+    bio: data.bio || '',
+    town: data.town || '',
+    state: data.state || '',
+    mobile: data.mobile || '',
+    upiId: data.upiId || '', // Add this
+    travelPreferences: data.travelPreferences || {
       adventure: false,
       luxury: false,
       budget: false,
@@ -27,35 +58,6 @@ const ProfilePage = () => {
       cultural: false
     }
   });
-
-  // Fetch profile
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setLoading(true);
-        const res = await getProfile();
-        console.log('Profile response:', res);
-        
-        if (res.success && res.profile) {
-          const data = res.profile;
-          setProfile(data);
-          setFormData({
-            name: data.name || '',
-            bio: data.bio || '',
-            town: data.town || '',
-            state: data.state || '',
-            mobile: data.mobile || '',
-            travelPreferences: data.travelPreferences || {
-              adventure: false,
-              luxury: false,
-              budget: false,
-              solo: false,
-              group: false,
-              beach: false,
-              mountain: false,
-              cultural: false
-            }
-          });
         } else {
           toast.error('Failed to load profile');
         }
@@ -244,6 +246,22 @@ const ProfilePage = () => {
                 required
               />
             </div>
+            
+            <div>
+  <label className="block font-semibold text-gray-700 mb-2">UPI ID</label>
+  <input
+    type="text"
+    name="upiId"
+    value={formData.upiId || ''}
+    onChange={handleChange}
+    placeholder="username@upi"
+    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+  />
+  <p className="text-sm text-gray-400 mt-1">
+    Required for expense splitting. Format: username@upi
+  </p>
+</div>
+
 
             <div>
               <label className="block font-semibold text-gray-700 mb-2">Town</label>

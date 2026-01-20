@@ -70,4 +70,39 @@ export const sendChatMessage = (groupId, text) => api.post(`/chat/group/${groupI
 export const getMyChats = () => api.get('/chat/my-chats').then(res => res.data);
 export const addUserToChat = (groupId, userId) => api.post(`/chat/group/${groupId}/add-user/${userId}`).then(res => res.data);
 
+
+// Trip Planning
+export const generateTripPlan = (groupId, prompt) => 
+  api.post('/trips/plan', { groupId, prompt }).then(res => res.data);
+
+export const getTripPlan = (groupId) => 
+  api.get(`/trips/plan/${groupId}`).then(res => res.data);
+
+export const updateTripPlan = (groupId, plan) => 
+  api.put(`/trips/plan/${groupId}`, { plan }).then(res => res.data);
+
+// Hotel Booking
+export const searchHotels = (data) => 
+  api.post('/trips/hotels/search', data).then(res => res.data);
+
+export const createGroupBooking = (data) => 
+  api.post('/trips/booking', data).then(res => res.data);
+
+export const getGroupBookings = (groupId) => 
+  api.get(`/trips/booking/${groupId}`).then(res => res.data);
+
+// Expense Management
+export const addExpense = (data) => 
+  api.post('/trips/expenses', data).then(res => res.data);
+
+export const getExpenses = (groupId) => 
+  api.get(`/trips/expenses/${groupId}`).then(res => res.data);
+
+export const deleteExpense = (expenseId) => 
+  api.delete(`/trips/expenses/${expenseId}`).then(res => res.data);
+
+// Route Suggestions
+export const getRouteSuggestions = (groupId, startingCity) => 
+  api.get(`/trips/routes/${groupId}`, { params: { startingCity } }).then(res => res.data);
+
 export default api;

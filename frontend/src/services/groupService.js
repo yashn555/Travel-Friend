@@ -42,12 +42,6 @@ export const createGroup = async (groupData) => {
   return response.data;
 };
 
-// Alias functions for compatibility
-export const getAllGroups = fetchAllGroups;
-export const requestJoinGroup = sendJoinRequest;
-
-// Add these functions to your existing groupService.js
-
 // Update group
 export const updateGroup = async (groupId, groupData) => {
   const response = await api.put(`/groups/${groupId}`, groupData);
@@ -58,4 +52,48 @@ export const updateGroup = async (groupId, groupData) => {
 export const deleteGroup = async (groupId) => {
   const response = await api.delete(`/groups/${groupId}`);
   return response.data;
+};
+
+// Alias functions for compatibility
+export const getAllGroups = fetchAllGroups;
+export const requestJoinGroup = sendJoinRequest;
+
+// SMART TRIP SYSTEM ADDITION: AI Trip Planner Services
+export const generateAIPlan = async (groupId) => {
+  const response = await api.post(`/groups/${groupId}/generate-ai-plan`);
+  return response.data;
+};
+
+export const getAIPlanStatus = async (groupId) => {
+  const response = await api.get(`/groups/${groupId}/ai-plan-status`);
+  return response.data.data;
+};
+
+// SMART TRIP SYSTEM ADDITION: Group Booking & Payment Services
+export const enableGroupBooking = async (groupId, bookingData) => {
+  const response = await api.post(`/groups/${groupId}/enable-booking`, bookingData);
+  return response.data;
+};
+
+export const recordPayment = async (groupId, paymentData) => {
+  const response = await api.post(`/groups/${groupId}/record-payment`, paymentData);
+  return response.data;
+};
+
+export const getPaymentSummary = async (groupId) => {
+  const response = await api.get(`/groups/${groupId}/payment-summary`);
+  return response.data.data;
+};
+
+export const createRazorpayOrder = async (groupId, orderData) => {
+  const response = await api.post(`/groups/${groupId}/create-razorpay-order`, orderData);
+  return response.data;
+};
+
+// SMART TRIP SYSTEM ADDITION: Location-based group search (optional)
+export const searchGroupsByLocation = async (lat, lng, radius) => {
+  const response = await api.get('/groups/location/search', {
+    params: { lat, lng, radius }
+  });
+  return response.data.data;
 };

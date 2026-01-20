@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import Loader from '../../components/common/Loader';
 import Button from '../../components/common/Button';
+import GroupTabs from '../../components/groupDetails/GroupTabs';
 
 const GroupDetailsPage = () => {
   const { id } = useParams();
@@ -15,6 +16,7 @@ const GroupDetailsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [requesting, setRequesting] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     // Check if id is valid
@@ -77,6 +79,18 @@ const GroupDetailsPage = () => {
   // Check if user is the creator
   const isCreator = group?.createdBy?._id === user?._id;
 
+  // Calculate days remaining until trip
+  const getDaysRemaining = () => {
+    if (!group?.startDate) return null;
+    const startDate = new Date(group.startDate);
+    const today = new Date();
+    const diffTime = startDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const daysRemaining = getDaysRemaining();
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -102,7 +116,7 @@ const GroupDetailsPage = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-4">
+    <div className="max-w-7xl mx-auto p-4">
       <div className="mb-8">
         <button
           onClick={() => navigate(-1)}
@@ -110,161 +124,112 @@ const GroupDetailsPage = () => {
         >
           ← Back
         </button>
-        <h1 className="text-3xl font-bold text-gray-800">{group.destination}</h1>
-        <p className="text-gray-600 mt-2">Group Details</p>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800">{group.destination}</h2>
-              <p className="text-gray-600 mt-2">{group.description}</p>
-            </div>
-            {isCreator && (
-              <span className="bg-purple-100 text-purple-800 px-4 py-2 rounded-full text-sm font-medium">
-                Your Group
-              </span>
-            )}
+        
+        {/* Trip Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-800">{group.destination}</h1>
+            <p className="text-gray-600 mt-2">{group.description}</p>
           </div>
-        </div>
-
-        <div className="p-8">
-          {/* Group Info Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            <div className="bg-gray-50 p-5 rounded-lg">
-              <h3 className="font-semibold text-gray-700 mb-2">📅 Trip Dates</h3>
-              <p className="text-gray-800">
-                {new Date(group.startDate).toLocaleDateString()} - {new Date(group.endDate).toLocaleDateString()}
-              </p>
-            </div>
-
-            <div className="bg-gray-50 p-5 rounded-lg">
-              <h3 className="font-semibold text-gray-700 mb-2">💰 Budget Range</h3>
-              <p className="text-gray-800">
-                {group.budget?.min || 0} - {group.budget?.max || 0} {group.budget?.currency || 'INR'}
-              </p>
-            </div>
-
-            <div className="bg-gray-50 p-5 rounded-lg">
-              <h3 className="font-semibold text-gray-700 mb-2">👥 Members</h3>
-              <p className="text-gray-800">
-                {group.currentMembersCount || 0}/{group.maxMembers || 10}
-                {group.isFull && <span className="text-red-600 ml-2">(Full)</span>}
-              </p>
-            </div>
-
-            <div className="bg-gray-50 p-5 rounded-lg">
-              <h3 className="font-semibold text-gray-700 mb-2">👤 Created By</h3>
-              <p className="text-gray-800">{group.createdBy?.name || 'Unknown'}</p>
-            </div>
-
-            <div className="bg-gray-50 p-5 rounded-lg">
-              <h3 className="font-semibold text-gray-700 mb-2">🔒 Group Type</h3>
-              <p className="text-gray-800 capitalize">{group.groupType || 'anonymous'}</p>
-            </div>
-
-            <div className="bg-gray-50 p-5 rounded-lg">
-              <h3 className="font-semibold text-gray-700 mb-2">📊 Status</h3>
-              <p className="text-gray-800 capitalize">{group.status || 'planning'}</p>
-            </div>
-          </div>
-
-          {/* Tags */}
-          {group.tags && group.tags.length > 0 && (
-            <div className="mb-8">
-              <h3 className="font-semibold text-gray-700 mb-3">🏷️ Tags</h3>
-              <div className="flex flex-wrap gap-2">
-                {group.tags.map((tag, index) => (
-                  <span key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                    {tag}
-                  </span>
-                ))}
-              </div>
+          
+          {daysRemaining !== null && (
+            <div className={`mt-4 md:mt-0 px-4 py-2 rounded-full font-medium ${
+              daysRemaining < 0 
+                ? 'bg-red-100 text-red-800' 
+                : daysRemaining < 7 
+                ? 'bg-yellow-100 text-yellow-800' 
+                : 'bg-green-100 text-green-800'
+            }`}>
+              {daysRemaining < 0 
+                ? 'Trip Completed' 
+                : daysRemaining === 0 
+                ? 'Trip Starts Today!' 
+                : `${daysRemaining} days until trip`}
             </div>
           )}
+        </div>
+      </div>
 
-          {/* Current Members */}
-          <div className="mb-8">
-            <h3 className="font-semibold text-gray-700 mb-4">👥 Current Members ({group.currentMembersCount || 0})</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {group.currentMembers?.map((member, index) => (
-                <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-                      <span className="text-blue-600 font-semibold">
-                        {member.user?.name?.charAt(0) || 'U'}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-800">{member.user?.name || 'Member'}</p>
-                      <p className="text-sm text-gray-500">{member.role === 'creator' ? 'Group Admin' : 'Member'}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* Main Content with Tabs */}
+      <GroupTabs 
+        group={group}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isCreator={isCreator}
+        isMember={isMember}
+        user={user}
+      />
 
-          {/* Action Buttons */}
-         <div className="pt-6 border-t border-gray-200">
-  <div className="flex flex-wrap gap-4">
-    {isCreator ? (
-      <>
-        {/* FIXED: Changed route from /chat/:id to /groups/:id/chat */}
-        <Button
-  onClick={() => navigate(`/groups/${id}/chat`)}  // CORRECT
-  className="bg-green-500 hover:bg-green-600"
->
-  Go to Group Chat
-</Button>
-        <Button
-          onClick={() => navigate('/group-requests')}
-          className="bg-yellow-500 hover:bg-yellow-600"
-        >
-          Manage Join Requests
-        </Button>
-      </>
-    ) : isMember ? (
-      <Button
-        onClick={() => navigate(`/groups/${id}/chat`)} // Same fix here
-        className="bg-green-500 hover:bg-green-600"
-      >
-        Go to Group Chat
-      </Button>
-    ) : hasPendingRequest ? (
-      <Button
-        disabled
-        className="bg-yellow-400 cursor-not-allowed"
-      >
-        Request Pending Approval
-      </Button>
-    ) : group.isFull ? (
-      <Button
-        disabled
-        className="bg-red-400 cursor-not-allowed"
-      >
-        Group is Full
-      </Button>
-    ) : (
-      <Button
-        onClick={handleJoin}
-        disabled={requesting}
-        className="bg-blue-500 hover:bg-blue-600"
-      >
-        {requesting ? 'Sending Request...' : 'Request to Join'}
-      </Button>
-    )}
+      {/* Action Buttons */}
+      <div className="mt-8 p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Group Actions</h3>
+        <div className="flex flex-wrap gap-4">
+          {isCreator ? (
+            <>
+              <Button
+                onClick={() => navigate(`/groups/${id}/chat`)}
+                className="bg-green-500 hover:bg-green-600"
+              >
+                Go to Group Chat
+              </Button>
+              <Button
+                onClick={() => navigate('/group-requests')}
+                className="bg-yellow-500 hover:bg-yellow-600"
+              >
+                Manage Join Requests
+              </Button>
+              <Button
+                onClick={() => setActiveTab('booking')}
+                className="bg-purple-500 hover:bg-purple-600"
+              >
+                Book Group Travel
+              </Button>
+            </>
+          ) : isMember ? (
+            <>
+              <Button
+                onClick={() => navigate(`/groups/${id}/chat`)}
+                className="bg-green-500 hover:bg-green-600"
+              >
+                Go to Group Chat
+              </Button>
+              <Button
+                onClick={() => setActiveTab('expenses')}
+                className="bg-blue-500 hover:bg-blue-600"
+              >
+                Manage Expenses
+              </Button>
+            </>
+          ) : hasPendingRequest ? (
+            <Button
+              disabled
+              className="bg-yellow-400 cursor-not-allowed"
+            >
+              Request Pending Approval
+            </Button>
+          ) : group.isFull ? (
+            <Button
+              disabled
+              className="bg-red-400 cursor-not-allowed"
+            >
+              Group is Full
+            </Button>
+          ) : (
+            <Button
+              onClick={handleJoin}
+              disabled={requesting}
+              className="bg-blue-500 hover:bg-blue-600"
+            >
+              {requesting ? 'Sending Request...' : 'Request to Join'}
+            </Button>
+          )}
 
-    <Button
-      onClick={() => navigate('/groups')}
-      className="bg-gray-500 hover:bg-gray-600"
-    >
-      Back to Groups
-    </Button>
-  </div>
-</div>
+          <Button
+            onClick={() => navigate('/groups')}
+            className="bg-gray-500 hover:bg-gray-600"
+          >
+            Back to Groups
+          </Button>
         </div>
       </div>
     </div>

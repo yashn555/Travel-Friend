@@ -14,6 +14,7 @@ const profileRoutes = require('./routes/profileRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 
+const tripRoutes = require('./routes/tripRoutes');
 
 // Initialize express
 const app = express();
@@ -42,6 +43,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/trips', tripRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
