@@ -523,6 +523,71 @@ const DashboardPage = () => {
       </motion.div>
     </div>
   );
+
+<div className="mt-8">
+  <h2 className="text-2xl font-bold text-gray-800 mb-4">👥 Find Travel Buddies</h2>
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    {/* Suggested Friends Card */}
+    <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-6">
+      <div className="flex items-center mb-4">
+        <div className="p-3 bg-blue-500 text-white rounded-lg mr-4">
+          <AiOutlineUserAdd size={24} />
+        </div>
+        <div>
+          <h3 className="font-bold text-gray-800">Suggested Friends</h3>
+          <p className="text-sm text-gray-600">Based on your interests</p>
+        </div>
+      </div>
+      <button 
+        onClick={() => navigate('/find-friends')}
+        className="w-full mt-4 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-medium"
+      >
+        Discover
+      </button>
+    </div>
+
+    {/* Nearby Travelers Card */}
+    <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
+      <div className="flex items-center mb-4">
+        <div className="p-3 bg-green-500 text-white rounded-lg mr-4">
+          <FaMapMarkerAlt size={20} />
+        </div>
+        <div>
+          <h3 className="font-bold text-gray-800">Nearby Travelers</h3>
+          <p className="text-sm text-gray-600">Find people in your area</p>
+        </div>
+      </div>
+      <button 
+        onClick={() => navigate('/nearby-users')}
+        className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-medium"
+      >
+        Explore
+      </button>
+    </div>
+
+    {/* Similar Interests Card */}
+    <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6">
+      <div className="flex items-center mb-4">
+        <div className="p-3 bg-purple-500 text-white rounded-lg mr-4">
+          <MdTravelExplore size={24} />
+        </div>
+        <div>
+          <h3 className="font-bold text-gray-800">Similar Interests</h3>
+          <p className="text-sm text-gray-600">Match with travelers like you</p>
+        </div>
+      </div>
+      <button 
+        onClick={() => navigate('/similar-interests')}
+        className="w-full mt-4 bg-purple-500 hover:bg-purple-600 text-white py-2 rounded-lg font-medium"
+      >
+        Match
+      </button>
+    </div>
+  </div>
+</div> 
+
 };
+
+
 
 export default DashboardPage;

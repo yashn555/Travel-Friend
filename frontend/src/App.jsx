@@ -9,6 +9,7 @@ import LoginPage from './pages/auth/LoginPage';
 import VerifyOTPPage from './pages/auth/VerifyOTPPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
+import UserProfilePage from './pages/UserProfilePage'; // ADD THIS IMPORT
 import CreateTripPage from './pages/trips/CreateTripPage';
 import GroupListPage from './pages/groups/GroupListPage';
 import GroupDetailsPage from './pages/groups/GroupDetailsPage';
@@ -50,6 +51,10 @@ function App() {
             {/* Protected */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            
+            {/* ADD THIS ROUTE for User Profile */}
+            <Route path="/user/:userId" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
+            
             <Route path="/create-trip" element={<ProtectedRoute><CreateTripPage /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><GroupListPage /></ProtectedRoute>} />
             <Route path="/groups/:id" element={<ProtectedRoute><GroupDetailsPage /></ProtectedRoute>} />
@@ -59,7 +64,7 @@ function App() {
             <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/edit-group/:id" element={<ProtectedRoute><EditGroupPage /></ProtectedRoute>} />
-            
+            <Route path="/chat/user/:userId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
             {/* Default */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
 

@@ -6,7 +6,7 @@ const cors = require('cors');
 const path = require('path');
 const http = require('http');
 const socketio = require('socket.io');
-const fileUpload = require('express-fileupload'); // ✅ MOVE THIS UP HERE
+const fileUpload = require('express-fileupload');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -15,6 +15,7 @@ const profileRoutes = require('./routes/profileRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const tripRoutes = require('./routes/tripRoutes');
+const userRoutes = require('./routes/userRoutes'); // ADD THIS LINE
 
 // Initialize express
 const app = express();
@@ -33,10 +34,10 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(fileUpload({ // ✅ NOW fileUpload IS DEFINED
+app.use(fileUpload({
   useTempFiles: true,
   tempFileDir: '/tmp/',
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
   abortOnLimit: true,
   createParentPath: true
 }));
@@ -51,6 +52,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/trips', tripRoutes);
+app.use('/api/users', userRoutes); // ADD THIS LINE
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -65,28 +67,22 @@ app.get('/api/health', (req, res) => {
 io.on('connection', (socket) => {
   console.log('🔌 New WebSocket connection:', socket.id);
 
-  // Join group room
   socket.on('join-group', (groupId) => {
     socket.join(`group-${groupId}`);
     console.log(`👥 Socket ${socket.id} joined group-${groupId}`);
   });
 
-  // Leave group room
   socket.on('leave-group', (groupId) => {
     socket.leave(`group-${groupId}`);
     console.log(`👋 Socket ${socket.id} left group-${groupId}`);
   });
 
-  // Send message
   socket.on('send-message', (data) => {
     const { groupId, message } = data;
     console.log(`💬 New message in group-${groupId}:`, message);
-    
-    // Broadcast to everyone in the group room including sender
     io.to(`group-${groupId}`).emit('new-message', message);
   });
 
-  // Typing indicator
   socket.on('typing', (data) => {
     const { groupId, userId, isTyping } = data;
     socket.to(`group-${groupId}`).emit('user-typing', {
@@ -95,7 +91,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // User disconnected
   socket.on('disconnect', () => {
     console.log('❌ WebSocket disconnected:', socket.id);
   });
@@ -141,7 +136,6 @@ const startServer = async () => {
 
 startServer();
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Rejection:', err.message);
   console.error(err.stack);

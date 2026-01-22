@@ -880,3 +880,681 @@ exports.deleteGroup = async (req, res) => {
     });
   }
 };
+// =============================================================================
+// NEW FUNCTIONS TO ADD - Location Management & Additional Features
+// =============================================================================
+
+// @desc    Update group starting location
+// @route   PUT /api/groups/:groupId/update-location
+// @access  Private (Group admin only)
+exports.updateGroupLocation = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { startingLocation, destinationLocation } = req.body;
+
+    console.log('📍 Updating group location for:', groupId);
+
+    // Validate groupId
+    if (!groupId || !mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid group ID is required'
+      });
+    }
+
+    // Find group
+    const group = await Group.findById(groupId);
+    
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if user is group creator or has admin role
+    const isCreator = group.createdBy.toString() === req.user.id;
+    const isAdmin = group.currentMembers.some(member => 
+      member.user.toString() === req.user.id && member.role === 'creator'
+    );
+
+    if (!isCreator && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group admin can update location'
+      });
+    }
+
+    // Update starting location if provided
+    if (startingLocation) {
+      if (!startingLocation.address || !startingLocation.coordinates) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid starting location with address and coordinates is required'
+        });
+      }
+
+      group.startingLocation = {
+        address: startingLocation.address.trim(),
+        coordinates: {
+          lat: parseFloat(startingLocation.coordinates.lat),
+          lng: parseFloat(startingLocation.coordinates.lng)
+        }
+      };
+
+      console.log('✅ Updated starting location to:', startingLocation.address);
+    }
+
+    // Update destination location if provided
+    if (destinationLocation) {
+      if (!destinationLocation.address || !destinationLocation.coordinates) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid destination location with address and coordinates is required'
+        });
+      }
+
+      group.destinationLocation = {
+        address: destinationLocation.address.trim(),
+        coordinates: {
+          lat: parseFloat(destinationLocation.coordinates.lat),
+          lng: parseFloat(destinationLocation.coordinates.lng)
+        }
+      };
+
+      console.log('✅ Updated destination location to:', destinationLocation.address);
+    }
+
+    // Also update destination field if destination location was provided
+    if (destinationLocation && destinationLocation.address) {
+      group.destination = destinationLocation.address;
+    }
+
+    await group.save();
+
+    // Get enhanced group data
+    const populatedGroup = await Group.findById(groupId)
+      .populate('createdBy', 'name profileImage email')
+      .populate('currentMembers.user', 'name profileImage email');
+
+    const enhancedGroup = populatedGroup.getEnhancedData();
+
+    res.status(200).json({
+      success: true,
+      message: 'Location updated successfully',
+      data: enhancedGroup
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating group location:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID format'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update location',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// @desc    Add member to group
+// @route   POST /api/groups/:groupId/add-member
+// @access  Private (Group admin only)
+exports.addMemberToGroup = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { userId, role = 'member' } = req.body;
+
+    console.log(`👥 Adding member ${userId} to group ${groupId}`);
+
+    const group = await Group.findById(groupId);
+    
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if user is group admin
+    const isAdmin = group.currentMembers.some(member => 
+      member.user.toString() === req.user.id && member.role === 'creator'
+    );
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group admin can add members'
+      });
+    }
+
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if group is full
+    const approvedMembers = group.currentMembers.filter(m => m.status === 'approved');
+    if (approvedMembers.length >= group.maxMembers) {
+      return res.status(400).json({
+        success: false,
+        message: 'Group is already full'
+      });
+    }
+
+    // Check if user is already a member
+    const isAlreadyMember = group.currentMembers.some(member => 
+      member.user.toString() === userId && member.status === 'approved'
+    );
+
+    if (isAlreadyMember) {
+      return res.status(400).json({
+        success: false,
+        message: 'User is already a member of this group'
+      });
+    }
+
+    // Add member using the schema method
+    const added = group.addMember(userId, role);
+    
+    if (!added) {
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to add member to group'
+      });
+    }
+
+    await group.save();
+
+    // Add user to group chat
+    try {
+      let chat = await Chat.findOne({ group: groupId });
+      
+      if (!chat) {
+        // Create new chat with all members
+        const participants = group.currentMembers
+          .filter(m => m.status === 'approved')
+          .map(m => m.user);
+        
+        chat = await Chat.create({
+          group: groupId,
+          participants: participants,
+          messages: [{
+            sender: null,
+            text: `Group chat created for "${group.destination}"`,
+            timestamp: new Date(),
+            isSystemMessage: true
+          }],
+          lastActivity: new Date()
+        });
+      } else {
+        // Add user to existing chat if not already there
+        if (!chat.participants.includes(userId)) {
+          chat.participants.push(userId);
+          
+          // Add system message
+          chat.messages.push({
+            sender: null,
+            text: `${user.name} has joined the chat`,
+            timestamp: new Date(),
+            isSystemMessage: true
+          });
+          
+          chat.lastActivity = new Date();
+          await chat.save();
+        }
+      }
+      
+      console.log(`✅ User ${user.name} added to group chat`);
+    } catch (chatError) {
+      console.error('❌ Error adding user to chat:', chatError.message);
+      // Don't fail the member addition if chat fails
+    }
+
+    // Notify the user
+    user.addNotification(
+      'trip_update',
+      'Added to Group',
+      `You have been added to "${group.destination}" trip`
+    );
+    await user.save();
+
+    // Populate user details in response
+    const updatedGroup = await Group.findById(groupId)
+      .populate('currentMembers.user', 'name email profilePicture')
+      .populate('createdBy', 'name email');
+
+    res.status(200).json({
+      success: true,
+      message: 'Member added successfully',
+      data: updatedGroup.getEnhancedData()
+    });
+
+  } catch (error) {
+    console.error('❌ Error adding member to group:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group or user ID'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add member to group'
+    });
+  }
+};
+
+// @desc    Get group join requests (admin only)
+// @route   GET /api/groups/:groupId/join-requests
+// @access  Private (Group admin only)
+exports.getJoinRequests = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+
+    console.log(`📋 Fetching join requests for group: ${groupId}`);
+
+    const group = await Group.findById(groupId)
+      .populate('joinRequests.user', 'name email profilePicture')
+      .populate('currentMembers.user', 'name email');
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if user is group admin
+    const isAdmin = group.currentMembers.some(member => 
+      member.user._id.toString() === req.user.id && member.role === 'creator'
+    );
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group admin can view join requests'
+      });
+    }
+
+    // Filter only pending requests
+    const pendingRequests = group.joinRequests.filter(request => 
+      request.status === 'pending'
+    );
+
+    console.log(`✅ Found ${pendingRequests.length} pending requests`);
+
+    res.status(200).json({
+      success: true,
+      data: pendingRequests,
+      count: pendingRequests.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting join requests:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get join requests'
+    });
+  }
+};
+
+// @desc    Handle join request (approve/reject)
+// @route   PUT /api/groups/:groupId/handle-request/:requestId
+// @access  Private (Group admin only)
+exports.handleJoinRequest = async (req, res) => {
+  try {
+    const { groupId, requestId } = req.params;
+    const { action } = req.body; // 'approve' or 'reject'
+
+    console.log(`🔄 Handling request ${action} for group ${groupId}, request ${requestId}`);
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Action must be either "approve" or "reject"'
+      });
+    }
+
+    const group = await Group.findById(groupId);
+    
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if user is group admin
+    const isAdmin = group.currentMembers.some(member => 
+      member.user.toString() === req.user.id && member.role === 'creator'
+    );
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group admin can handle join requests'
+      });
+    }
+
+    // Find the request
+    const request = group.joinRequests.id(requestId);
+    
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Join request not found'
+      });
+    }
+
+    // Handle the request
+    const handled = group.handleJoinRequest(requestId, action);
+    
+    if (!handled) {
+      return res.status(400).json({
+        success: false,
+        message: action === 'approve' ? 'Group is full' : 'Failed to process request'
+      });
+    }
+
+    await group.save();
+
+    // Add to chat if approved
+    if (action === 'approve') {
+      try {
+        let chat = await Chat.findOne({ group: groupId });
+        const user = await User.findById(request.user);
+        
+        if (chat && user) {
+          if (!chat.participants.includes(request.user)) {
+            chat.participants.push(request.user);
+            
+            // Add system message
+            chat.messages.push({
+              sender: null,
+              text: `${user.name} has joined the chat`,
+              timestamp: new Date(),
+              isSystemMessage: true
+            });
+            
+            chat.lastActivity = new Date();
+            await chat.save();
+          }
+        }
+      } catch (chatError) {
+        console.error('❌ Error adding user to chat:', chatError.message);
+      }
+    }
+
+    // Populate user info for response
+    const updatedGroup = await Group.findById(groupId)
+      .populate('currentMembers.user', 'name email')
+      .populate('joinRequests.user', 'name email');
+
+    res.status(200).json({
+      success: true,
+      message: `Join request ${action}d successfully`,
+      data: updatedGroup.getEnhancedData()
+    });
+
+  } catch (error) {
+    console.error('❌ Error handling join request:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group or request ID'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to handle join request'
+    });
+  }
+};
+
+// @desc    Get group analytics
+// @route   GET /api/groups/:groupId/analytics
+// @access  Private (Group members only)
+exports.getGroupAnalytics = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+
+    console.log(`📊 Fetching analytics for group: ${groupId}`);
+
+    const group = await Group.findById(groupId)
+      .populate('currentMembers.user', 'name email')
+      .populate('ratings.user', 'name');
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if user is group member
+    const isMember = group.currentMembers.some(member => 
+      member.user._id.toString() === req.user.id
+    );
+
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group members can view analytics'
+      });
+    }
+
+    // Calculate analytics using getEnhancedData
+    const enhancedGroup = group.getEnhancedData();
+    
+    // Additional analytics
+    const analytics = {
+      totalMembers: enhancedGroup.currentMembersCount || group.currentMembers.length,
+      availableSlots: enhancedGroup.availableSlots || 0,
+      isFull: enhancedGroup.isFull || false,
+      averageRating: enhancedGroup.averageRating || 0,
+      totalRatings: group.ratings?.length || 0,
+      tripDuration: enhancedGroup.durationDays || 0,
+      daysUntilTrip: enhancedGroup.daysUntilStart || null,
+      distanceKm: enhancedGroup.distanceKm || 0,
+      budgetRange: group.budget ? {
+        min: group.budget.min,
+        max: group.budget.max,
+        currency: group.budget.currency || 'INR'
+      } : null,
+      tripStatus: group.status,
+      isActive: enhancedGroup.isActive || false,
+      isUpcoming: enhancedGroup.isUpcoming || false
+    };
+
+    console.log(`✅ Analytics calculated for group ${group.destination}`);
+
+    res.status(200).json({
+      success: true,
+      data: analytics
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting group analytics:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get group analytics'
+    });
+  }
+};
+
+// @desc    Get groups by location (search)
+// @route   GET /api/groups/search/location
+// @access  Private
+exports.searchGroupsByLocation = async (req, res) => {
+  try {
+    const { lat, lng, radius = 50 } = req.query; // radius in km
+
+    console.log(`🗺️ Searching groups near coordinates: ${lat}, ${lng}, radius: ${radius}km`);
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude and longitude are required for location search'
+      });
+    }
+
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+    const searchRadius = parseFloat(radius);
+
+    // Convert radius to radians (Earth's radius = 6371 km)
+    const radiusInRadians = searchRadius / 6371;
+
+    // Find groups with starting location near the provided coordinates
+    const groups = await Group.find({
+      'startingLocation.coordinates': {
+        $geoWithin: {
+          $centerSphere: [[longitude, latitude], radiusInRadians]
+        }
+      },
+      status: { $in: ['planning', 'confirmed'] },
+      endDate: { $gte: new Date() }
+    })
+    .populate('createdBy', 'name profileImage')
+    .populate('currentMembers.user', 'name profileImage')
+    .sort({ createdAt: -1 });
+
+    // Enhance groups with distance calculation
+    const enhancedGroups = groups.map(group => {
+      const enhanced = group.getEnhancedData();
+      
+      // Calculate exact distance from search point
+      const start = group.startingLocation.coordinates;
+      if (start) {
+        // Haversine formula
+        const R = 6371;
+        const dLat = (latitude - start.lat) * Math.PI / 180;
+        const dLng = (longitude - start.lng) * Math.PI / 180;
+        
+        const a = 
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(start.lat * Math.PI / 180) * Math.cos(latitude * Math.PI / 180) * 
+          Math.sin(dLng/2) * Math.sin(dLng/2);
+        
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        enhanced.distanceFromSearch = Math.round(R * c);
+      }
+      
+      return enhanced;
+    });
+
+    console.log(`✅ Found ${enhancedGroups.length} groups within ${radius}km radius`);
+
+    res.status(200).json({
+      success: true,
+      data: enhancedGroups,
+      searchParams: {
+        latitude,
+        longitude,
+        radius: searchRadius,
+        unit: 'km'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error searching groups by location:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to search groups by location'
+    });
+  }
+};
+
+// @desc    Get route suggestions from group (for tripController compatibility)
+// @route   GET /api/groups/:groupId/starting-city
+// @access  Private (Group members only)
+exports.getGroupStartingCity = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+
+    console.log(`📍 Getting starting city for group: ${groupId}`);
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if user is group member
+    const isMember = group.currentMembers.some(member => 
+      member.user.toString() === req.user.id
+    );
+
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group members can view group details'
+      });
+    }
+
+    if (!group.startingLocation || !group.startingLocation.address) {
+      return res.status(404).json({
+        success: false,
+        message: 'Starting location not set for this group'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        startingCity: group.startingLocation.address,
+        coordinates: group.startingLocation.coordinates,
+        destination: group.destination
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting group starting city:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get starting city'
+    });
+  }
+};

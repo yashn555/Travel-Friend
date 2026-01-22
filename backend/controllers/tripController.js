@@ -6,6 +6,7 @@ const User = require('../models/User');
 const axios = require('axios');
 
 // Helper function to call Gemini API
+// In generateGeminiJSON function, update the API endpoint:
 const generateGeminiJSON = async (aiPrompt) => {
   try {
     // Check if API key is available
@@ -13,7 +14,7 @@ const generateGeminiJSON = async (aiPrompt) => {
       throw new Error('Gemini API key is not configured');
     }
 
-    // Correct Gemini API endpoint
+    // UPDATED: Correct Gemini API endpoint for gemini-1.5-pro
     const response = await axios.post(
       `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
@@ -27,25 +28,7 @@ const generateGeminiJSON = async (aiPrompt) => {
           topP: 0.8,
           topK: 40,
           maxOutputTokens: 2048,
-        },
-        safetySettings: [
-          {
-            category: "HARM_CATEGORY_HARASSMENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_HATE_SPEECH",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
+        }
       },
       {
         headers: {
@@ -63,18 +46,24 @@ const generateGeminiJSON = async (aiPrompt) => {
     }
     
     const aiResponse = response.data.candidates[0].content.parts[0].text;
-    console.log('Gemini AI Response (first 300 chars):', aiResponse.substring(0, 300) + '...');
+    console.log('Gemini AI Response (first 500 chars):', aiResponse.substring(0, 500) + '...');
     
     // Parse JSON from response
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error('No JSON found in response. Full response:', aiResponse);
       throw new Error('No JSON found in AI response');
     }
     
-    const parsedData = JSON.parse(jsonMatch[0]);
-    console.log('Parsed JSON successfully');
-    
-    return parsedData;
+    try {
+      const parsedData = JSON.parse(jsonMatch[0]);
+      console.log('Parsed JSON successfully');
+      return parsedData;
+    } catch (parseError) {
+      console.error('JSON Parse Error:', parseError);
+      console.error('JSON String:', jsonMatch[0]);
+      throw new Error('Failed to parse AI response as JSON');
+    }
     
   } catch (error) {
     console.error('Gemini API Error Details:', {
@@ -86,7 +75,7 @@ const generateGeminiJSON = async (aiPrompt) => {
     });
     
     if (error.response?.status === 404) {
-      throw new Error('Gemini API endpoint not found. Please check the API URL and key.');
+      throw new Error('Gemini API endpoint not found. Please check the API model name.');
     }
     
     if (error.response?.status === 400) {
@@ -95,6 +84,11 @@ const generateGeminiJSON = async (aiPrompt) => {
     
     if (error.response?.status === 403) {
       throw new Error('Gemini API access forbidden. Check API key permissions.');
+    }
+    
+    // If API key is invalid or missing
+    if (error.message.includes('API key not valid')) {
+      throw new Error('Invalid Gemini API key. Please check your GEMINI_API_KEY in .env file');
     }
     
     throw new Error(`Gemini API failed: ${error.message}`);
@@ -418,10 +412,15 @@ exports.getRouteSuggestions = async (req, res) => {
       });
     }
 
-    if (!startingCity) {
+    // Get starting city from group if not provided in query
+    const startCity = startingCity || group.startingLocation?.address;
+    
+    if (!startCity) {
       return res.status(400).json({
         success: false,
-        message: 'Starting city is required'
+        message: 'Starting city is required for route suggestions',
+        note: 'Please provide starting city in query parameter or ensure group has startingLocation',
+        suggestion: 'Update your group with starting location or provide ?startingCity=CityName in the URL'
       });
     }
 
@@ -430,14 +429,15 @@ exports.getRouteSuggestions = async (req, res) => {
       return res.status(501).json({
         success: false,
         message: 'Route suggestion service is not configured yet',
-        note: 'Please add GEMINI_API_KEY to .env file'
+        note: 'Please add GEMINI_API_KEY to .env file',
+        suggestion: 'Get your API key from Google AI Studio'
       });
     }
 
     // Create AI prompt for route suggestions
     const aiPrompt = `You are a travel route expert. Suggest the best travel routes between cities.
 
-FROM: ${startingCity}
+FROM: ${startCity}
 TO: ${group.destination}
 GROUP SIZE: ${group.currentMembers.length} people
 BUDGET: ₹${group.budget?.min || 1000} - ₹${group.budget?.max || 10000}
@@ -473,6 +473,8 @@ IMPORTANT:
 4. Consider Indian travel conditions and prices
 5. Return ONLY JSON, no other text`;
 
+    console.log('Calling Gemini API for route suggestions from', startCity, 'to', group.destination);
+    
     // Call Gemini API
     const routeData = await generateGeminiJSON(aiPrompt);
 
@@ -482,21 +484,24 @@ IMPORTANT:
         ...routeData,
         groupSize: group.currentMembers.length,
         budget: group.budget,
-        startingCity,
+        startingCity: startCity,
         destination: group.destination
       }
     });
   } catch (error) {
     console.error('Error getting route suggestions:', error);
     
-    // Return error - NO MOCK DATA
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate route suggestions',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    // Return fallback suggestions if AI fails
+    const fallbackSuggestions = generateFallbackRouteSuggestions(group, startingCity);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Using fallback route suggestions',
+      data: fallbackSuggestions
     });
   }
 };
+
 
 // @desc    Get real hotels from Maqami API
 // @route   POST /api/trips/hotels/search

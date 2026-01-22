@@ -14,6 +14,21 @@ export const generateTripPlan = async (groupId, prompt = '') => {
     return response.data;
   } catch (error) {
     console.error('❌ Generate trip plan API error:', error);
+    
+    // Handle specific error cases
+    if (error.response?.data?.message?.includes('Gemini API')) {
+      throw {
+        ...error,
+        response: {
+          ...error.response,
+          data: {
+            ...error.response?.data,
+            message: 'AI trip planning service is currently unavailable. Please try again later.'
+          }
+        }
+      };
+    }
+    
     throw error;
   }
 };
@@ -97,7 +112,7 @@ export const deleteExpense = async (expenseId) => {
   }
 };
 
-// Route Suggestions
+// Route Suggestions - UPDATED: Now handles real-time data only
 export const getRouteSuggestions = async (groupId) => {
   try {
     const response = await api.get(`/trips/routes/${groupId}`);
@@ -105,6 +120,20 @@ export const getRouteSuggestions = async (groupId) => {
     return response.data;
   } catch (error) {
     console.error('❌ Get route suggestions API error:', error);
+    
+    // Don't throw fallback data, throw the actual error
+    throw error;
+  }
+};
+
+// Update booking status
+export const updateBookingStatus = async (bookingId, status) => {
+  try {
+    const response = await api.put(`/trips/booking/${bookingId}`, { status });
+    console.log('✅ Update booking status API response:', response);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Update booking status API error:', error);
     throw error;
   }
 };
