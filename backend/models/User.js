@@ -91,16 +91,17 @@ const UserSchema = new mongoose.Schema({
     default: 'India'
   },
   
-  // Personal Details
+  // Personal Details - FIXED: dateOfBirth field added
   dateOfBirth: {
-    type: Date
+    type: Date,
+    default: null
   },
   
   gender: {
-  type: String,
-  enum: ['male', 'female', 'other', 'prefer-not-to-say'],
-  default: 'prefer-not-to-say' // CHANGE THIS LINE - add default value
-},
+    type: String,
+    enum: ['male', 'female', 'other', 'prefer-not-to-say'],
+    default: 'prefer-not-to-say'
+  },
   
   // Social Features
   followers: [{
@@ -212,7 +213,9 @@ const UserSchema = new mongoose.Schema({
     groupSize: Number,
     notes: String,
     rating: Number,
-    photos: [String]
+    photos: [String],
+    distance: Number,
+    country: String
   }],
   
   upcomingTrips: [{
@@ -226,13 +229,13 @@ const UserSchema = new mongoose.Schema({
     }
   }],
   
-  // User Stats
+  // User Stats - FIXED: Ensure all stats fields exist
   stats: {
     tripsCount: { type: Number, default: 0 },
     friendsCount: { type: Number, default: 0 },
     followersCount: { type: Number, default: 0 },
     followingCount: { type: Number, default: 0 },
-    totalDistance: { type: Number, default: 0 }, // in km
+    totalDistance: { type: Number, default: 0 },
     countriesVisited: { type: Number, default: 0 }
   },
   
@@ -360,7 +363,6 @@ UserSchema.virtual('friendsCount').get(function() {
 
 // Virtual for mutual friends (to be calculated at runtime)
 UserSchema.virtual('mutualFriendsCount').get(function() {
-  // This would be calculated in the controller
   return 0;
 });
 
@@ -492,6 +494,31 @@ UserSchema.methods.generateOTP = function() {
   return otp;
 };
 
+UserSchema.methods.isOTPValid = function(enteredOTP) {
+  if (!this.otp || !this.otp.code || !this.otp.expiresAt) {
+    return false;
+  }
+  
+  const currentTime = new Date();
+  const expiresAt = new Date(this.otp.expiresAt);
+  
+  console.log(`OTP Verification Details:
+    - Entered OTP: ${enteredOTP}
+    - Stored OTP: ${this.otp.code}
+    - Stored Expiry: ${expiresAt}
+    - Current Time: ${currentTime}
+    - Is Expired: ${expiresAt <= currentTime}
+    - OTP Match: ${this.otp.code === enteredOTP}`);
+  
+  // Check if OTP matches and is not expired
+  return this.otp.code === enteredOTP && expiresAt > currentTime;
+};
+
+// Clear OTP method
+UserSchema.methods.clearOTP = function() {
+  this.otp = undefined;
+};
+
 // Add notification
 UserSchema.methods.addNotification = function(type, title, message, from = null, metadata = {}) {
   this.notifications.unshift({
@@ -510,15 +537,15 @@ UserSchema.methods.addNotification = function(type, title, message, from = null,
   }
 };
 
-// Update stats
+// Update stats method - FIXED: Make it actually update stats
 UserSchema.methods.updateStats = function() {
   this.stats = {
-    tripsCount: this.pastTrips.length,
-    friendsCount: this.friends.filter(f => f.status === 'accepted').length,
-    followersCount: this.followers.length,
-    followingCount: this.following.length,
-    totalDistance: this.pastTrips.reduce((sum, trip) => sum + (trip.distance || 0), 0),
-    countriesVisited: [...new Set(this.pastTrips.map(trip => trip.country))].length
+    tripsCount: this.pastTrips ? this.pastTrips.length : 0,
+    friendsCount: this.friends ? this.friends.filter(f => f.status === 'accepted').length : 0,
+    followersCount: this.followers ? this.followers.length : 0,
+    followingCount: this.following ? this.following.length : 0,
+    totalDistance: this.pastTrips ? this.pastTrips.reduce((sum, trip) => sum + (trip.distance || 0), 0) : 0,
+    countriesVisited: this.pastTrips ? [...new Set(this.pastTrips.map(trip => trip.country).filter(Boolean))].length : 0
   };
 };
 

@@ -4,23 +4,19 @@ import {
   getUserProfile, 
   followUser, 
   unfollowUser, 
-  sendFriendRequest,
+  createOrGetPrivateChat,
   getUserStats
 } from '../services/api';
 import { 
   AiOutlineMessage, 
   AiOutlineStar, 
-  AiOutlineHistory,
-  AiOutlineEnvironment,
   AiOutlineCheck,
   AiOutlineUserAdd
 } from 'react-icons/ai';
 import { 
   FaMapMarkerAlt, 
-  FaUserFriends, 
   FaGlobeAmericas,
   FaCalendarAlt,
-  FaPhone,
   FaEnvelope,
   FaBirthdayCake,
   FaVenusMars,
@@ -28,9 +24,9 @@ import {
   FaStar,
   FaRegStar
 } from 'react-icons/fa';
-import { MdTravelExplore, MdFlight, MdTrain, MdDirectionsCar } from 'react-icons/md';
+import { MdTravelExplore } from 'react-icons/md';
 import { toast } from 'react-toastify';
-
+import { format } from 'date-fns';
 
 const UserProfilePage = () => {
   const { userId } = useParams();
@@ -39,19 +35,17 @@ const UserProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [userStats, setUserStats] = useState(null);
   const [isFollowing, setIsFollowing] = useState(false);
-  const [isFriend, setIsFriend] = useState(false);
-  const [sendingRequest, setSendingRequest] = useState(false);
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
 
-
-const formatDate = (dateString) => {
-  if (!dateString) return '';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -65,7 +59,6 @@ const formatDate = (dateString) => {
         setUser(profileRes.profile);
         setUserStats(statsRes.data);
         setIsFollowing(profileRes.profile?.isFollowing || false);
-        setIsFriend(profileRes.profile?.isFriend || false);
       } catch (err) {
         console.error('Error fetching user profile:', err);
         toast.error('Failed to load user profile');
@@ -95,16 +88,31 @@ const formatDate = (dateString) => {
     }
   };
 
-  const handleFriendRequest = async () => {
+  const handleStartChat = async () => {
     try {
-      setSendingRequest(true);
-      await sendFriendRequest(userId);
-      toast.success('Friend request sent successfully');
+      setIsLoadingChat(true);
+      // Create or get existing private chat with this user
+      const response = await createOrGetPrivateChat(userId);
+      
+      if (response.success) {
+        // Navigate to the private chat
+        navigate(`/chat/${response.chatId}`, {
+          state: {
+            chatName: user.name,
+            isPrivateChat: true,
+            otherUserId: userId,
+            otherUserName: user.name,
+            otherUserProfileImage: user.profileImage
+          }
+        });
+      } else {
+        toast.error('Failed to create chat');
+      }
     } catch (err) {
-      console.error('Friend request error:', err);
-      toast.error(err.response?.data?.message || 'Failed to send friend request');
+      console.error('Chat creation error:', err);
+      toast.error(err.response?.data?.message || 'Failed to start chat');
     } finally {
-      setSendingRequest(false);
+      setIsLoadingChat(false);
     }
   };
 
@@ -207,27 +215,13 @@ const formatDate = (dateString) => {
                 )}
               </button>
 
-              {!isFriend && (
-                <button
-                  onClick={handleFriendRequest}
-                  disabled={sendingRequest}
-                  className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium flex items-center disabled:opacity-50"
-                >
-                  {sendingRequest ? 'Sending...' : (
-                    <>
-                      <FaUserFriends className="mr-2" />
-                      Add Friend
-                    </>
-                  )}
-                </button>
-              )}
-
               <button
-                onClick={() => navigate(`/chat/user/${userId}`)}
-                className="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-medium flex items-center"
+                onClick={handleStartChat}
+                disabled={isLoadingChat}
+                className="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-medium flex items-center disabled:opacity-50"
               >
                 <AiOutlineMessage className="mr-2" />
-                Message
+                {isLoadingChat ? 'Starting Chat...' : 'Message'}
               </button>
             </div>
           </div>

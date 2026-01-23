@@ -53,6 +53,7 @@ export const uploadProfileImage = (formData) => api.post('/dashboard/profile/upl
 // ===== USER PROFILE FUNCTIONS (Add these) =====
 export const getUserProfile = (userId) => api.get(`/users/profile/${userId}`).then(res => res.data);
 
+
 // In the USER PROFILE FUNCTIONS section, update these endpoints:
 export const getFollowersList = (userId) => {
   const endpoint = userId ? `/users/followers/${userId}` : '/users/dashboard/followers'; // Changed
@@ -87,6 +88,8 @@ export const getFriendRequests = () => api.get('/friend-requests').then(res => r
 export const acceptFriendRequest = (requestId) => api.put(`/users/friend-request/accept/${requestId}`).then(res => res.data);
 export const rejectFriendRequest = (requestId) => api.put(`/users/friend-request/reject/${requestId}`).then(res => res.data);
 export const removeFriend = (friendshipId) => api.delete(`/users/friends/${friendshipId}`).then(res => res.data);
+export const getTripHistory = () => api.get('/profile/trips').then(res => res.data); // Add this line
+
 
 // ===== GROUP =====
 export const createGroup = (data) => api.post('/groups/create', data).then(res => res.data);
@@ -123,5 +126,19 @@ export const getRouteSuggestions = (groupId, startingCity) => api.get(`/trips/ro
 
 // Search users
 export const searchUsers = (query) => api.get(`/users/search?q=${encodeURIComponent(query)}`).then(res => res.data);
+
+export const createOrGetPrivateChat = async (otherUserId) => {
+  try {
+    const response = await axios.post(`/api/chats/private/${otherUserId}`, {}, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
 
 export default api;

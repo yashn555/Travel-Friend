@@ -11,6 +11,7 @@ import {
   getFriendsList,
   getFollowersList,
   getFollowingList,
+  getTripHistory, // Added for trip history
 } from '../services/api';
 import { 
   AiOutlineCamera, 
@@ -76,6 +77,10 @@ const ProfilePage = () => {
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Trip History State - ADDED
+  const [trips, setTrips] = useState([]);
+  const [tripsLoading, setTripsLoading] = useState(false);
   
   // Use geolocation hook
   const { location: userLocation, error: locationError, getLocation } = useGeoLocation();
@@ -292,9 +297,32 @@ const ProfilePage = () => {
     }
   };
 
+  // ========== ADDED: Fetch Trip History Function ==========
+  const fetchTripHistory = async () => {
+    try {
+      setTripsLoading(true);
+      console.log('🔄 Fetching trip history...');
+      
+      const res = await getTripHistory();
+      console.log('📊 Trip history response:', res);
+      
+      if (res.success) {
+        setTrips(res.data || []);
+      } else {
+        toast.error(res.message || 'Failed to load trip history');
+      }
+    } catch (err) {
+      console.error('❌ Error fetching trip history:', err);
+      toast.error('Failed to load trip history');
+    } finally {
+      setTripsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchProfileData();
     getLocation();
+    fetchTripHistory(); // Added: Fetch trip history on component mount
   }, []);
 
   // Handle form input change
@@ -694,17 +722,7 @@ const ProfilePage = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-4">
-      {/* Debug info - remove in production */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mb-4 p-2 bg-yellow-100 border border-yellow-300 rounded">
-          <p className="text-sm">
-            <strong>Debug Info:</strong> Profile ID: {profile._id} | 
-            Has dateOfBirth: {profile.dateOfBirth ? 'Yes' : 'No'} | 
-            Has gender: {profile.gender ? 'Yes' : 'No'} | 
-            Has languages: {profile.languages ? 'Yes' : 'No'}
-          </p>
-        </div>
-      )}
+    
 
       {/* Header with Live Location */}
       <div className="mb-8">
@@ -980,646 +998,1099 @@ const ProfilePage = () => {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column - Personal Info */}
                 <div className="lg:col-span-2 space-y-6">
-                  {/* About Me */}
+                                   {/* Bio */}
                   <div className="bg-gray-50 rounded-xl p-6">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                      <AiOutlineUserAdd className="mr-2" />
+                    <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                      <AiOutlineMessage className="mr-2" />
                       About Me
                     </h3>
                     <p className="text-gray-600 whitespace-pre-line">
-                      {profile.bio || 'No bio provided.'}
+                      {profile.bio || 'No bio added yet.'}
                     </p>
-                    
-                    <div className="grid grid-cols-2 gap-4 mt-6">
-                      <div className="flex items-center">
-                        <FaBirthdayCake className="text-gray-400 mr-3" />
-                        <div>
-                          <div className="text-sm text-gray-500">Date of Birth</div>
-                          <div className="font-medium">{getDateOfBirthDisplay()}</div>
-                        </div>
+                  </div>
+
+                  {/* Travel Preferences */}
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                      <MdTravelExplore className="mr-2" />
+                      Travel Preferences
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {travelPreferenceList.map(pref => (
+                        profile.travelPreferences?.[pref.id] && (
+                          <span 
+                            key={pref.id}
+                            className="inline-flex items-center px-3 py-1 rounded-full bg-white border border-blue-200 text-blue-700 text-sm"
+                          >
+                            <span className="mr-1">{pref.icon}</span>
+                            {pref.label}
+                          </span>
+                        )
+                      ))}
+                      {!Object.values(profile.travelPreferences || {}).some(v => v) && (
+                        <p className="text-gray-500">No travel preferences set</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Languages & Experience */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-6">
+                      <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                        <FaLanguage className="mr-2" />
+                        Languages
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {Array.isArray(profile.languages) && profile.languages.length > 0 ? (
+                          profile.languages.map(lang => (
+                            <span 
+                              key={lang} 
+                              className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm"
+                            >
+                              {lang}
+                            </span>
+                          ))
+                        ) : (
+                          <p className="text-gray-500">No languages added</p>
+                        )}
                       </div>
-                      
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-xl p-6">
+                      <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                        <AiOutlineStar className="mr-2" />
+                        Experience Level
+                      </h3>
                       <div className="flex items-center">
-                        <FaVenusMars className="text-gray-400 mr-3" />
-                        <div>
-                          <div className="text-sm text-gray-500">Gender</div>
-                          <div className="font-medium">{getGenderDisplay()}</div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <FaLanguage className="text-gray-400 mr-3" />
-                        <div>
-                          <div className="text-sm text-gray-500">Languages</div>
-                          <div className="font-medium">{getLanguagesDisplay()}</div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <MdTravelExplore className="text-gray-400 mr-3" />
-                        <div>
-                          <div className="text-sm text-gray-500">Travel Experience</div>
-                          <div className="font-medium">{getTravelExperienceDisplay()}</div>
+                        <div className={`px-4 py-2 rounded-lg ${
+                          profile.travelExperience === 'beginner' ? 'bg-blue-100 text-blue-800' :
+                          profile.travelExperience === 'intermediate' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-purple-100 text-purple-800'
+                        }`}>
+                          {getTravelExperienceDisplay()}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Travel Preferences */}
-                  {profile.travelPreferences && Object.values(profile.travelPreferences).some(value => value === true) && (
-                    <div className="bg-gray-50 rounded-xl p-6">
-                      <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                        <MdTravelExplore className="mr-2" />
-                        Travel Preferences
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {travelPreferenceList.map((pref) => (
-                          profile.travelPreferences?.[pref.id] && (
-                            <span
-                              key={pref.id}
-                              className="px-3 py-2 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center"
-                            >
-                              <span className="mr-2">{pref.icon}</span>
-                              {pref.label}
-                            </span>
-                          )
-                        ))}
+                  {/* Social Links */}
+                  {profile.socialLinks && Object.values(profile.socialLinks).some(val => val) && (
+                    <div className="bg-white border border-gray-200 rounded-xl p-6">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Social Links</h3>
+                      <div className="flex flex-wrap gap-4">
+                        {profile.socialLinks.instagram && (
+                          <a 
+                            href={`https://instagram.com/${profile.socialLinks.instagram}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg hover:opacity-90"
+                          >
+                            Instagram
+                          </a>
+                        )}
+                        {profile.socialLinks.twitter && (
+                          <a 
+                            href={`https://twitter.com/${profile.socialLinks.twitter}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center px-4 py-2 bg-blue-400 text-white rounded-lg hover:opacity-90"
+                          >
+                            Twitter
+                          </a>
+                        )}
+                        {profile.socialLinks.facebook && (
+                          <a 
+                            href={`https://facebook.com/${profile.socialLinks.facebook}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:opacity-90"
+                          >
+                            Facebook
+                          </a>
+                        )}
+                        {profile.socialLinks.linkedin && (
+                          <a 
+                            href={`https://linkedin.com/in/${profile.socialLinks.linkedin}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center px-4 py-2 bg-blue-700 text-white rounded-lg hover:opacity-90"
+                          >
+                            LinkedIn
+                          </a>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Right Column - Stats & Social */}
+                {/* Right Column - Stats & Info */}
                 <div className="space-y-6">
-                  {/* Stats Card */}
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-6">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Travel Stats</h3>
+                  {/* User Stats */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">Profile Stats</h3>
                     <div className="space-y-4">
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center py-2 border-b border-gray-100">
                         <span className="text-gray-600">Trips Completed</span>
-                        <span className="font-bold text-blue-600">{userStats?.tripsCount || userStats?.totalTrips || 0}</span>
+                        <span className="font-bold text-blue-600">{userStats.tripsCompleted || 0}</span>
                       </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Countries Visited</span>
-                        <span className="font-bold text-green-600">{userStats?.countriesVisited || 0}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center py-2 border-b border-gray-100">
                         <span className="text-gray-600">Total Distance</span>
-                        <span className="font-bold text-purple-600">{userStats?.totalDistance || 0} km</span>
+                        <span className="font-bold text-green-600">{userStats.totalDistance || 0} km</span>
                       </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Friends</span>
-                        <span className="font-bold text-pink-600">{userStats?.friendsCount || 0}</span>
+                      <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                        <span className="text-gray-600">Countries Visited</span>
+                        <span className="font-bold text-purple-600">{userStats.countriesVisited || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-gray-600">Member Since</span>
+                        <span className="font-bold text-gray-800">
+                          {profile.createdAt ? format(new Date(profile.createdAt), 'MMM yyyy') : 'N/A'}
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Rating */}
-                  <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-100 rounded-xl p-6">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                      <AiOutlineStar className="mr-2" />
-                      Traveler Rating
-                    </h3>
-                    <div className="flex items-center justify-center mb-4">
-                      <div className="flex items-center">
-                        {renderRating(profile.rating || 4.5)}
+                  {/* Personal Information */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">Personal Information</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center text-gray-600">
+                        <FaBirthdayCake className="mr-3 text-gray-400" />
+                        <span>Date of Birth:</span>
+                        <span className="ml-auto font-medium">{getDateOfBirthDisplay()}</span>
                       </div>
-                      <span className="ml-2 text-2xl font-bold">{profile.rating?.toFixed(1) || '4.5'}</span>
-                    </div>
-                    <div className="text-center text-sm text-gray-600">
-                      Based on {profile.reviews?.length || 0} reviews from travel buddies
+                      <div className="flex items-center text-gray-600">
+                        <FaVenusMars className="mr-3 text-gray-400" />
+                        <span>Gender:</span>
+                        <span className="ml-auto font-medium">{getGenderDisplay()}</span>
+                      </div>
+                      <div className="flex items-center text-gray-600">
+                        <FaLanguage className="mr-3 text-gray-400" />
+                        <span>Languages:</span>
+                        <span className="ml-auto font-medium text-right">
+                          {getLanguagesDisplay()}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Social Links */}
-                  {profile.socialLinks && Object.values(profile.socialLinks).some(value => value) && (
-                    <div className="bg-gray-50 rounded-xl p-6">
-                      <h3 className="text-xl font-semibold text-gray-800 mb-4">Social Links</h3>
-                      <div className="space-y-3">
-                        {profile.socialLinks.instagram && (
-                          <a href={`https://instagram.com/${profile.socialLinks.instagram}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-pink-600 hover:text-pink-700">
-                            <span className="mr-2">📷</span> Instagram
-                          </a>
-                        )}
-                        {profile.socialLinks.twitter && (
-                          <a href={`https://twitter.com/${profile.socialLinks.twitter}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-400 hover:text-blue-500">
-                            <span className="mr-2">🐦</span> Twitter
-                          </a>
-                        )}
-                        {profile.socialLinks.facebook && (
-                          <a href={`https://facebook.com/${profile.socialLinks.facebook}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-600 hover:text-blue-700">
-                            <span className="mr-2">📘</span> Facebook
-                          </a>
-                        )}
-                        {profile.socialLinks.linkedin && (
-                          <a href={`https://linkedin.com/in/${profile.socialLinks.linkedin}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-700 hover:text-blue-800">
-                            <span className="mr-2">💼</span> LinkedIn
-                          </a>
-                        )}
-                      </div>
+                  {/* Quick Actions */}
+                  <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-6">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">Quick Actions</h3>
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => setActiveTab('edit')}
+                        className="w-full bg-white hover:bg-gray-50 border border-gray-300 text-gray-800 py-3 rounded-lg flex items-center justify-center"
+                      >
+                        <AiOutlineEdit className="mr-2" />
+                        Edit Profile
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('trips')}
+                        className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg flex items-center justify-center"
+                      >
+                        <AiOutlineHistory className="mr-2" />
+                        View Trip History
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('security')}
+                        className="w-full bg-white hover:bg-gray-50 border border-gray-300 text-gray-800 py-3 rounded-lg flex items-center justify-center"
+                      >
+                        <FaKey className="mr-2" />
+                        Change Password
+                      </button>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
 
             {activeTab === 'edit' && (
-              <form onSubmit={handleUpdate} className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Basic Info */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Basic Information</h3>
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Full Name *</label>
-                      <input
-                        type="text"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Mobile Number *</label>
-                      <input
-                        type="text"
-                        name="mobile"
-                        value={formData.mobile}
-                        onChange={handleChange}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Date of Birth</label>
-                      <input
-                        type="date"
-                        name="dateOfBirth"
-                        value={formData.dateOfBirth}
-                        onChange={handleChange}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Gender</label>
-                      <select
-                        name="gender"
-                        value={formData.gender}
-                        onChange={handleChange}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="prefer-not-to-say">Prefer not to say</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Location Info */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Location Information</h3>
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Town</label>
-                      <input
-                        type="text"
-                        name="town"
-                        value={formData.town}
-                        onChange={handleChange}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">City</label>
-                      <input
-                        type="text"
-                        name="city"
-                        value={formData.city}
-                        onChange={handleChange}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">State</label>
-                      <input
-                        type="text"
-                        name="state"
-                        value={formData.state}
-                        onChange={handleChange}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">UPI ID</label>
-                      <input
-                        type="text"
-                        name="upiId"
-                        value={formData.upiId}
-                        onChange={handleChange}
-                        placeholder="username@upi"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bio */}
-                <div>
-                  <label className="block font-medium text-gray-700 mb-2">Bio</label>
-                  <textarea
-                    name="bio"
-                    value={formData.bio}
-                    onChange={handleChange}
-                    rows={4}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Tell us about yourself, your travel experiences, and what you're looking for in travel buddies..."
-                  />
-                </div>
-
-                {/* Travel Preferences */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Travel Preferences</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {travelPreferenceList.map((pref) => (
-                      <label key={pref.id} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+              <div className="max-w-3xl">
+                <form onSubmit={handleUpdate}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Basic Information */}
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Basic Information</h3>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Full Name *
+                        </label>
                         <input
-                          type="checkbox"
-                          name={pref.id}
-                          checked={formData.travelPreferences[pref.id] || false}
+                          type="text"
+                          name="name"
+                          value={formData.name}
                           onChange={handleChange}
-                          className="h-5 w-5 text-blue-500 rounded focus:ring-blue-400"
+                          required
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Enter your full name"
                         />
-                        <span className="flex items-center">
-                          <span className="mr-2">{pref.icon}</span>
-                          <span className="font-medium text-gray-700">{pref.label}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                      </div>
 
-                {/* Travel Experience & Budget */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block font-medium text-gray-700 mb-2">Travel Experience Level</label>
-                    <select
-                      name="travelExperience"
-                      value={formData.travelExperience}
-                      onChange={handleChange}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      {experienceLevels.map(level => (
-                        <option key={level.value} value={level.value}>
-                          {level.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium text-gray-700 mb-2">Travel Budget</label>
-                    <select
-                      name="travelBudget"
-                      value={formData.travelBudget}
-                      onChange={handleChange}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      {budgetLevels.map(budget => (
-                        <option key={budget.value} value={budget.value}>
-                          {budget.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Languages & Transport */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block font-medium text-gray-700 mb-2">Languages Spoken</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {languageOptions.map(lang => (
-                        <label key={lang} className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            name={`language_${lang}`}
-                            checked={formData.languages.includes(lang)}
-                            onChange={handleChange}
-                            className="h-4 w-4 text-blue-500 rounded"
-                          />
-                          <span>{lang}</span>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Mobile Number
                         </label>
-                      ))}
-                    </div>
-                  </div>
+                        <input
+                          type="tel"
+                          name="mobile"
+                          value={formData.mobile}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="+91 9876543210"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block font-medium text-gray-700 mb-2">Preferred Transport</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {transportOptions.map(transport => (
-                        <label key={transport.value} className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            name={`transport_${transport.value}`}
-                            checked={formData.preferredTransport.includes(transport.value)}
-                            onChange={handleChange}
-                            className="h-4 w-4 text-blue-500 rounded"
-                          />
-                          <span className="flex items-center">
-                            {transport.icon}
-                            <span className="ml-2">{transport.label}</span>
-                          </span>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          UPI ID
                         </label>
-                      ))}
+                        <input
+                          type="text"
+                          name="upiId"
+                          value={formData.upiId}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="username@upi"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Bio
+                        </label>
+                        <textarea
+                          name="bio"
+                          value={formData.bio}
+                          onChange={handleChange}
+                          rows="3"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Tell us about yourself..."
+                        />
+                      </div>
+                    </div>
+
+                    {/* Location Information */}
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Location</h3>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Town/Village
+                        </label>
+                        <input
+                          type="text"
+                          name="town"
+                          value={formData.town}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Your town or village"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          City *
+                        </label>
+                        <input
+                          type="text"
+                          name="city"
+                          value={formData.city}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Your city"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          State *
+                        </label>
+                        <input
+                          type="text"
+                          name="state"
+                          value={formData.state}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Your state"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Country
+                        </label>
+                        <input
+                          type="text"
+                          name="country"
+                          value={formData.country}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Personal Details */}
+                    <div className="space-y-4 md:col-span-2">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Personal Details</h3>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Date of Birth
+                          </label>
+                          <input
+                            type="date"
+                            name="dateOfBirth"
+                            value={formData.dateOfBirth}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Gender
+                          </label>
+                          <select
+                            name="gender"
+                            value={formData.gender}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="prefer-not-to-say">Prefer not to say</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Travel Experience
+                          </label>
+                          <select
+                            name="travelExperience"
+                            value={formData.travelExperience}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            {experienceLevels.map(level => (
+                              <option key={level.value} value={level.value}>
+                                {level.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Languages */}
+                    <div className="space-y-4 md:col-span-2">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Languages</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        {languageOptions.map(lang => (
+                          <label key={lang} className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              name={`language_${lang}`}
+                              checked={formData.languages.includes(lang)}
+                              onChange={handleChange}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-gray-700">{lang}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Travel Preferences */}
+                    <div className="space-y-4 md:col-span-2">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Travel Preferences</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {travelPreferenceList.map(pref => (
+                          <label key={pref.id} className="flex items-center space-x-2 cursor-pointer p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              name={pref.id}
+                              checked={formData.travelPreferences[pref.id] || false}
+                              onChange={handleChange}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="mr-1">{pref.icon}</span>
+                            <span className="text-gray-700">{pref.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Transportation */}
+                    <div className="space-y-4 md:col-span-2">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Preferred Transportation</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        {transportOptions.map(transport => (
+                          <label key={transport.value} className="flex flex-col items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              name={`transport_${transport.value}`}
+                              checked={formData.preferredTransport.includes(transport.value)}
+                              onChange={handleChange}
+                              className="mb-2"
+                            />
+                            <span className="text-2xl mb-2">{transport.icon}</span>
+                            <span className="text-sm text-gray-700">{transport.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Budget */}
+                    <div className="space-y-4 md:col-span-2">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Travel Budget</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {budgetLevels.map(budget => (
+                          <label key={budget.value} className="flex items-center space-x-2 cursor-pointer p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                            <input
+                              type="radio"
+                              name="travelBudget"
+                              value={budget.value}
+                              checked={formData.travelBudget === budget.value}
+                              onChange={handleChange}
+                              className="text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-gray-700">{budget.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Social Links */}
+                    <div className="space-y-4 md:col-span-2">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4">Social Links</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Instagram
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.socialLinks.instagram}
+                            onChange={(e) => handleSocialLinkChange('instagram', e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="username"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Twitter
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.socialLinks.twitter}
+                            onChange={(e) => handleSocialLinkChange('twitter', e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="username"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Facebook
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.socialLinks.facebook}
+                            onChange={(e) => handleSocialLinkChange('facebook', e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="username"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            LinkedIn
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.socialLinks.linkedin}
+                            onChange={(e) => handleSocialLinkChange('linkedin', e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="username"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Social Links */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Social Links</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Instagram</label>
-                      <input
-                        type="text"
-                        value={formData.socialLinks.instagram}
-                        onChange={(e) => handleSocialLinkChange('instagram', e.target.value)}
-                        placeholder="Username"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Twitter</label>
-                      <input
-                        type="text"
-                        value={formData.socialLinks.twitter}
-                        onChange={(e) => handleSocialLinkChange('twitter', e.target.value)}
-                        placeholder="Username"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Facebook</label>
-                      <input
-                        type="text"
-                        value={formData.socialLinks.facebook}
-                        onChange={(e) => handleSocialLinkChange('facebook', e.target.value)}
-                        placeholder="Username"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">LinkedIn</label>
-                      <input
-                        type="text"
-                        value={formData.socialLinks.linkedin}
-                        onChange={(e) => handleSocialLinkChange('linkedin', e.target.value)}
-                        placeholder="Username"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <div className="pt-6 border-t border-gray-200">
-                  <button
-                    type="submit"
-                    disabled={updating}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
-                  >
-                    {updating ? (
-                      <>
-                        <span className="animate-spin inline-block h-5 w-5 border-b-2 border-white rounded-full mr-2"></span>
-                        Updating Profile...
-                      </>
-                    ) : (
-                      'Save Changes'
-                    )}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {activeTab === 'security' && (
-              <div className="max-w-2xl space-y-6">
-                <div className="bg-gray-50 rounded-xl p-6">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    <FaKey className="mr-2" />
-                    Change Password
-                  </h3>
-                  <form onSubmit={handlePasswordChange} className="space-y-4">
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Current Password</label>
-                      <input
-                        type="password"
-                        value={passwordForm.currentPassword}
-                        onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">New Password</label>
-                      <input
-                        type="password"
-                        value={passwordForm.newPassword}
-                        onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block font-medium text-gray-700 mb-2">Confirm New Password</label>
-                      <input
-                        type="password"
-                        value={passwordForm.confirmPassword}
-                        onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                        className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-                    
+                  {/* Submit Buttons */}
+                  <div className="mt-8 pt-6 border-t border-gray-200 flex justify-end space-x-4">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('overview')}
+                      className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
                     <button
                       type="submit"
-                      disabled={changingPassword}
-                      className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium disabled:opacity-50"
+                      disabled={updating}
+                      className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50 flex items-center"
                     >
-                      {changingPassword ? 'Changing Password...' : 'Change Password'}
+                      {updating ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Changes'
+                      )}
                     </button>
-                  </form>
-                </div>
-
-                <div className="bg-red-50 border border-red-100 rounded-xl p-6">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    <FaTrash className="mr-2" />
-                    Danger Zone
-                  </h3>
-                  <p className="text-gray-600 mb-4">Once you delete your account, there is no going back. Please be certain.</p>
-                  <button className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-medium">
-                    Delete Account
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'friends' && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Friends List */}
-                  <div className="bg-gray-50 rounded-xl p-6">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Friends ({friends.length})</h3>
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {friends.map((friend, index) => (
-                        <div key={friend._id || index} className="flex items-center justify-between p-3 bg-white rounded-lg">
-                          <div className="flex items-center">
-                            <img
-                              src={
-                                friend.profileImage && friend.profileImage !== 'default-profile.jpg'
-                                  ? `http://localhost:5000/uploads/profiles/${friend.profileImage}`
-                                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(friend.name || 'Friend')}&background=random&size=32`
-                              }
-                              alt={friend.name || 'Friend'}
-                              className="w-8 h-8 rounded-full mr-3"
-                            />
-                            <div>
-                              <div className="font-medium">{friend.name || 'Unknown'}</div>
-                              <div className="text-sm text-gray-500">{friend.city || 'Location not set'}</div>
-                            </div>
-                          </div>
-                          <button className="text-blue-500 hover:text-blue-600">
-                            <AiOutlineMessage size={20} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
                   </div>
-
-                  {/* Followers */}
-                  <div className="bg-gray-50 rounded-xl p-6">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Followers ({followers.length})</h3>
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {followers.map((follower, index) => (
-                        <div key={follower._id || index} className="flex items-center justify-between p-3 bg-white rounded-lg">
-                          <div className="flex items-center">
-                            <img
-                              src={
-                                follower.profileImage && follower.profileImage !== 'default-profile.jpg'
-                                  ? `http://localhost:5000/uploads/profiles/${follower.profileImage}`
-                                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(follower.name || 'Follower')}&background=random&size=32`
-                              }
-                              alt={follower.name || 'Follower'}
-                              className="w-8 h-8 rounded-full mr-3"
-                            />
-                            <div>
-                              <div className="font-medium">{follower.name || 'Unknown'}</div>
-                              <div className="text-sm text-gray-500">{follower.city || 'Location not set'}</div>
-                            </div>
-                          </div>
-                          {follower.isFollowingBack ? (
-                            <span className="text-sm text-gray-500">Follows you back</span>
-                          ) : (
-                            <button 
-                              onClick={() => handleFollowBack(follower._id)}
-                              className="text-sm text-blue-500 hover:text-blue-600"
-                            >
-                              Follow back
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Following */}
-                  <div className="bg-gray-50 rounded-xl p-6">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Following ({following.length})</h3>
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {following.map((follow, index) => (
-                        <div key={follow._id || index} className="flex items-center justify-between p-3 bg-white rounded-lg">
-                          <div className="flex items-center">
-                            <img
-                              src={
-                                follow.profileImage && follow.profileImage !== 'default-profile.jpg'
-                                  ? `http://localhost:5000/uploads/profiles/${follow.profileImage}`
-                                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(follow.name || 'Following')}&background=random&size=32`
-                              }
-                              alt={follow.name || 'Following'}
-                              className="w-8 h-8 rounded-full mr-3"
-                            />
-                            <div>
-                              <div className="font-medium">{follow.name || 'Unknown'}</div>
-                              <div className="text-sm text-gray-500">{follow.city || 'Location not set'}</div>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => handleUnfollow(follow._id)}
-                            className="text-sm text-red-500 hover:text-red-600"
-                          >
-                            Unfollow
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                </form>
               </div>
             )}
 
             {activeTab === 'trips' && (
               <div className="space-y-6">
-                <h3 className="text-xl font-semibold text-gray-800">Trip History</h3>
-                {profile.pastTrips && profile.pastTrips.length > 0 ? (
+                <div className="flex justify-between items-center">
+                  <h3 className="text-2xl font-bold text-gray-800">Trip History</h3>
+                  <button
+                    onClick={fetchTripHistory}
+                    disabled={tripsLoading}
+                    className="flex items-center text-blue-500 hover:text-blue-600"
+                  >
+                    <AiOutlineSync className={`mr-2 ${tripsLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+
+                {tripsLoading ? (
+                  <div className="flex justify-center items-center h-48">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                    <span className="ml-3 text-gray-600">Loading trips...</span>
+                  </div>
+                ) : trips.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl">
+                    <div className="text-6xl mb-4">🧳</div>
+                    <h4 className="text-xl font-semibold text-gray-700 mb-2">No Trips Yet</h4>
+                    <p className="text-gray-500 mb-4">You haven't completed any trips yet.</p>
+                    <button
+                      onClick={() => window.location.href = '/plan-trip'}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg"
+                    >
+                      Plan Your First Trip
+                    </button>
+                  </div>
+                ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {profile.pastTrips.map((trip, index) => (
-                      <div key={index} className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="font-semibold text-lg text-gray-800">{trip.destination}</h4>
-                          {trip.rating && (
-                            <div className="flex items-center">
-                              {renderRating(trip.rating)}
+                    {trips.map((trip, index) => (
+                      <div key={trip._id || index} className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-shadow">
+                        <div className="p-6">
+                          <div className="flex justify-between items-start mb-4">
+                            <div>
+                              <h4 className="font-bold text-lg text-gray-800">{trip.destination || 'Unnamed Trip'}</h4>
+                              <p className="text-sm text-gray-500 flex items-center mt-1">
+                                <FaCalendarAlt className="mr-2" />
+                                {trip.startDate ? format(new Date(trip.startDate), 'dd MMM yyyy') : 'Date not set'}
+                                {trip.endDate && ` - ${format(new Date(trip.endDate), 'dd MMM yyyy')}`}
+                              </p>
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              trip.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              trip.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                              'bg-blue-100 text-blue-800'
+                            }`}>
+                              {trip.status || 'planned'}
+                            </span>
+                          </div>
+                          
+                          <div className="mb-4">
+                            <div className="flex items-center text-gray-600 mb-2">
+                              <FaMapMarkerAlt className="mr-2" />
+                              <span className="text-sm">From: {trip.origin || 'Not specified'}</span>
+                            </div>
+                            <div className="flex items-center text-gray-600">
+                              <FaMapMarkerAlt className="mr-2" />
+                              <span className="text-sm">To: {trip.destination || 'Not specified'}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between items-center mb-4">
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-blue-600">{trip.distance || 0}</div>
+                              <div className="text-xs text-gray-500">KM</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-green-600">₹{trip.cost || 0}</div>
+                              <div className="text-xs text-gray-500">Cost</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-purple-600">{trip.duration || 0}</div>
+                              <div className="text-xs text-gray-500">Days</div>
+                            </div>
+                          </div>
+
+                          {trip.travelPartners && trip.travelPartners.length > 0 && (
+                            <div className="mb-4">
+                              <p className="text-sm text-gray-600 mb-2">Travel Partners:</p>
+                              <div className="flex -space-x-2">
+                                {trip.travelPartners.slice(0, 3).map((partner, idx) => (
+                                  <div key={idx} className="w-8 h-8 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-xs">
+                                    {partner.name ? partner.name.charAt(0).toUpperCase() : 'U'}
+                                  </div>
+                                ))}
+                                {trip.travelPartners.length > 3 && (
+                                  <div className="w-8 h-8 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-xs text-gray-600">
+                                    +{trip.travelPartners.length - 3}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
-                        </div>
-                        <div className="space-y-2 text-sm text-gray-600">
-                          <div className="flex items-center">
-                            <FaCalendarAlt className="mr-2" />
-                            {trip.startDate && trip.endDate ? (
-                              <span>
-                                {format(new Date(trip.startDate), 'dd MMM yyyy')} - {format(new Date(trip.endDate), 'dd MMM yyyy')}
-                              </span>
-                            ) : (
-                              'Dates not specified'
-                            )}
-                          </div>
-                          <div className="flex items-center">
-                            <FaUserFriends className="mr-2" />
-                            <span>Group size: {trip.groupSize || 'Not specified'}</span>
-                          </div>
-                          {trip.notes && (
-                            <p className="mt-3 text-gray-700">{trip.notes}</p>
-                          )}
+
+                          <button
+                            onClick={() => window.location.href = `/trip/${trip._id}`}
+                            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 py-2 rounded-lg text-sm font-medium"
+                          >
+                            View Details
+                          </button>
                         </div>
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <div className="text-center py-12 bg-gray-50 rounded-xl">
-                    <AiOutlineHistory className="text-4xl text-gray-400 mx-auto mb-4" />
-                    <h4 className="text-lg font-semibold text-gray-600 mb-2">No Trip History Yet</h4>
-                    <p className="text-gray-500">Your completed trips will appear here</p>
+                )}
+
+                <div className="mt-8 pt-6 border-t border-gray-200">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-semibold text-gray-800">Trip Statistics</h4>
+                      <p className="text-sm text-gray-500">
+                        Total: {trips.length} trips • {trips.filter(t => t.status === 'completed').length} completed
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => window.location.href = '/plan-trip'}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center"
+                    >
+                      <MdTravelExplore className="mr-2" />
+                      Plan New Trip
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'friends' && (
+              <div className="space-y-8">
+                {/* Friends, Followers, Following Navigation */}
+                <div className="border-b border-gray-200">
+                  <nav className="flex space-x-8">
+                    {[
+                      { id: 'friends', label: `Friends (${friends.length})`, icon: <FaUserFriends /> },
+                      { id: 'followers', label: `Followers (${followers.length})`, icon: <FaUserPlus /> },
+                      { id: 'following', label: `Following (${following.length})`, icon: <AiOutlineUserAdd /> }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`py-3 px-1 font-medium border-b-2 transition-colors flex items-center ${
+                          activeTab === tab.id
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        <span className="mr-2">{tab.icon}</span>
+                        {tab.label}
+                      </button>
+                    ))}
+                  </nav>
+                </div>
+
+                {/* Friends List */}
+                {activeTab === 'friends' && (
+                  <div>
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-2xl font-bold text-gray-800">My Friends</h3>
+                      <button
+                        onClick={() => setActiveTab('overview')}
+                        className="text-blue-500 hover:text-blue-600"
+                      >
+                        <AiOutlineSearch className="inline mr-1" />
+                        Find More Friends
+                      </button>
+                    </div>
+                    
+                    {friends.length === 0 ? (
+                      <div className="text-center py-12 bg-gray-50 rounded-xl">
+                        <div className="text-6xl mb-4">👥</div>
+                        <h4 className="text-xl font-semibold text-gray-700 mb-2">No Friends Yet</h4>
+                        <p className="text-gray-500 mb-4">Start following people to build your travel network.</p>
+                        <button
+                          onClick={() => setActiveTab('overview')}
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg"
+                        >
+                          Find Travel Buddies
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {friends.map((friend, index) => (
+                          <div key={friend._id || friend.id || index} className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+                            <div className="flex flex-col items-center text-center">
+                              <img
+                                src={
+                                  friend.profileImage && friend.profileImage !== 'default-profile.jpg'
+                                    ? `http://localhost:5000/uploads/profiles/${friend.profileImage}`
+                                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(friend.name || 'User')}&background=random&size=80`
+                                }
+                                alt={friend.name || 'Friend'}
+                                className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg mb-4"
+                              />
+                              <h4 className="font-bold text-lg text-gray-800">{friend.name || 'Unknown User'}</h4>
+                              
+                              <div className="flex items-center justify-center mt-2 mb-3">
+                                {renderRating(friend.rating || 4.5)}
+                                <span className="ml-2 text-sm text-gray-600">{friend.rating?.toFixed(1) || '4.5'}</span>
+                              </div>
+                              
+                              <div className="text-sm text-gray-500 mb-4">
+                                <div className="flex items-center justify-center">
+                                  <FaMapMarkerAlt className="mr-1 text-xs" />
+                                  {friend.city || friend.town || 'Location not set'}
+                                </div>
+                              </div>
+                              
+                              <div className="w-full space-y-2">
+                                <button
+                                  onClick={() => window.location.href = `/user/${friend._id || friend.id}`}
+                                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm font-medium"
+                                >
+                                  View Profile
+                                </button>
+                                <button
+                                  onClick={() => window.open(`mailto:${friend.email}`, '_blank')}
+                                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 py-2 rounded-lg text-sm font-medium"
+                                >
+                                  <FaEnvelope className="inline mr-1" />
+                                  Message
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Followers List */}
+                {activeTab === 'followers' && (
+                  <div>
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-2xl font-bold text-gray-800">My Followers</h3>
+                      <div className="text-sm text-gray-500">
+                        {followers.filter(f => f.isFollowingBack).length} mutual follows
+                      </div>
+                    </div>
+                    
+                    {followers.length === 0 ? (
+                      <div className="text-center py-12 bg-gray-50 rounded-xl">
+                        <div className="text-6xl mb-4">👤</div>
+                        <h4 className="text-xl font-semibold text-gray-700 mb-2">No Followers Yet</h4>
+                        <p className="text-gray-500">Share your profile to get more followers.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {followers.map((follower, index) => (
+                          <div key={follower._id || follower.id || index} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <img
+                                  src={
+                                    follower.profileImage && follower.profileImage !== 'default-profile.jpg'
+                                      ? `http://localhost:5000/uploads/profiles/${follower.profileImage}`
+                                      : `https://ui-avatars.com/api/?name=${encodeURIComponent(follower.name || 'User')}&background=random&size=50`
+                                  }
+                                  alt={follower.name || 'Follower'}
+                                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+                                />
+                                <div className="ml-4">
+                                  <h4 className="font-bold text-gray-800">{follower.name || 'Unknown User'}</h4>
+                                  <div className="flex items-center text-sm text-gray-500">
+                                    <FaMapMarkerAlt className="mr-1 text-xs" />
+                                    {follower.city || follower.town || 'Location not set'}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center space-x-3">
+                                {follower.isFollowingBack ? (
+                                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                                    <FaCheck className="inline mr-1" />
+                                    Following
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleFollowBack(follower._id || follower.id)}
+                                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium"
+                                  >
+                                    Follow Back
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => window.location.href = `/user/${follower._id || follower.id}`}
+                                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
+                                >
+                                  View
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Following List */}
+                {activeTab === 'following' && (
+                  <div>
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-2xl font-bold text-gray-800">Following</h3>
+                      <div className="text-sm text-gray-500">
+                        {following.length} people
+                      </div>
+                    </div>
+                    
+                    {following.length === 0 ? (
+                      <div className="text-center py-12 bg-gray-50 rounded-xl">
+                        <div className="text-6xl mb-4">👣</div>
+                        <h4 className="text-xl font-semibold text-gray-700 mb-2">Not Following Anyone</h4>
+                        <p className="text-gray-500">Start following travelers to see their updates.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {following.map((user, index) => (
+                          <div key={user._id || user.id || index} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <img
+                                  src={
+                                    user.profileImage && user.profileImage !== 'default-profile.jpg'
+                                      ? `http://localhost:5000/uploads/profiles/${user.profileImage}`
+                                      : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random&size=50`
+                                  }
+                                  alt={user.name || 'User'}
+                                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+                                />
+                                <div className="ml-4">
+                                  <h4 className="font-bold text-gray-800">{user.name || 'Unknown User'}</h4>
+                                  <div className="flex items-center text-sm text-gray-500">
+                                    <FaMapMarkerAlt className="mr-1 text-xs" />
+                                    {user.city || user.town || 'Location not set'}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center space-x-3">
+                                <button
+                                  onClick={() => handleUnfollow(user._id || user.id)}
+                                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium"
+                                >
+                                  Unfollow
+                                </button>
+                                <button
+                                  onClick={() => window.location.href = `/user/${user._id || user.id}`}
+                                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
+                                >
+                                  View
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'security' && (
+              <div className="max-w-2xl">
+                <div className="bg-white border border-gray-200 rounded-xl p-8">
+                  <h3 className="text-2xl font-bold text-gray-800 mb-2">Change Password</h3>
+                  <p className="text-gray-600 mb-8">Update your password to keep your account secure.</p>
+                  
+                  <form onSubmit={handlePasswordChange}>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Current Password *
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.currentPassword}
+                          onChange={(e) => setPasswordForm({...passwordForm, currentPassword: e.target.value})}
+                          required
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Enter current password"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          New Password *
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.newPassword}
+                          onChange={(e) => setPasswordForm({...passwordForm, newPassword: e.target.value})}
+                          required
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="At least 6 characters"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Confirm New Password *
+                        </label>
+                        <input
+                          type="password"
+                          value={passwordForm.confirmPassword}
+                          onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
+                          required
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Re-enter new password"
+                        />
+                      </div>
+                      
+                      <div className="pt-4">
+                        <button
+                          type="submit"
+                          disabled={changingPassword}
+                          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg font-medium disabled:opacity-50 flex items-center justify-center"
+                        >
+                          {changingPassword ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              Changing Password...
+                            </>
+                          ) : (
+                            'Change Password'
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                  
+                  <div className="mt-8 pt-8 border-t border-gray-200">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4">Security Tips</h4>
+                    <ul className="space-y-2 text-gray-600">
+                      <li className="flex items-start">
+                        <FaCheck className="text-green-500 mr-2 mt-1" />
+                        Use a strong password with a mix of letters, numbers, and symbols
+                      </li>
+                      <li className="flex items-start">
+                        <FaCheck className="text-green-500 mr-2 mt-1" />
+                        Never share your password with anyone
+                      </li>
+                      <li className="flex items-start">
+                        <FaCheck className="text-green-500 mr-2 mt-1" />
+                        Change your password regularly for better security
+                      </li>
+                      <li className="flex items-start">
+                        <FaCheck className="text-green-500 mr-2 mt-1" />
+                        Use different passwords for different accounts
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'settings' && (
+              <div className="max-w-2xl">
+                <div className="bg-white border border-gray-200 rounded-xl p-8">
+                  <h3 className="text-2xl font-bold text-gray-800 mb-6">Account Settings</h3>
+                  
+                  <div className="space-y-6">
+                    {/* Notification Settings */}
+                    <div className="border border-gray-200 rounded-xl p-6">
+                      <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                        <AiOutlineMessage className="mr-2" />
+                        Notification Preferences
+                      </h4>
+                      <div className="space-y-4">
+                        <label className="flex items-center justify-between cursor-pointer">
+                          <div>
+                            <div className="font-medium text-gray-700">Trip Updates</div>
+                            <div className="text-sm text-gray-500">Get notifications about your trips</div>
+                          </div>
+                          <input type="checkbox" className="toggle" defaultChecked />
+                        </label>
+                        <label className="flex items-center justify-between cursor-pointer">
+                          <div>
+                            <div className="font-medium text-gray-700">Friend Requests</div>
+                            <div className="text-sm text-gray-500">Get notifications when someone follows you</div>
+                          </div>
+                          <input type="checkbox" className="toggle" defaultChecked />
+                        </label>
+                        <label className="flex items-center justify-between cursor-pointer">
+                          <div>
+                            <div className="font-medium text-gray-700">Messages</div>
+                            <div className="text-sm text-gray-500">Get notifications for new messages</div>
+                          </div>
+                          <input type="checkbox" className="toggle" defaultChecked />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Privacy Settings */}
+                    <div className="border border-gray-200 rounded-xl p-6">
+                      <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                        <AiOutlineLock className="mr-2" />
+                        Privacy Settings
+                      </h4>
+                      <div className="space-y-4">
+                        <label className="flex items-center justify-between cursor-pointer">
+                          <div>
+                            <div className="font-medium text-gray-700">Profile Visibility</div>
+                            <div className="text-sm text-gray-500">Allow others to view your profile</div>
+                          </div>
+                          <select className="border border-gray-300 rounded-lg px-4 py-2">
+                            <option>Public</option>
+                            <option>Friends Only</option>
+                            <option>Private</option>
+                          </select>
+                        </label>
+                        <label className="flex items-center justify-between cursor-pointer">
+                          <div>
+                            <div className="font-medium text-gray-700">Show Last Seen</div>
+                            <div className="text-sm text-gray-500">Show when you were last active</div>
+                          </div>
+                          <input type="checkbox" className="toggle" defaultChecked />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Account Actions */}
+                    <div className="border border-red-200 bg-red-50 rounded-xl p-6">
+                      <h4 className="text-lg font-bold text-gray-800 mb-4">Account Actions</h4>
+                      <div className="space-y-4">
+                        <button className="w-full bg-red-100 hover:bg-red-200 text-red-600 py-3 rounded-lg font-medium flex items-center justify-center">
+                          <FaTrash className="mr-2" />
+                          Delete Account
+                        </button>
+                        <p className="text-sm text-gray-500">
+                          Warning: Deleting your account will permanently remove all your data including trips, friends, and settings. This action cannot be undone.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

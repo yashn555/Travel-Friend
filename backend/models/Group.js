@@ -501,6 +501,80 @@ GroupSchema.methods.handleJoinRequest = function(requestId, action) {
   return false;
 };
 
+// Add this method to your GroupSchema methods:
+
+// 🔥 NEW: Auto-complete past trips
+GroupSchema.methods.autoCompleteIfPast = function() {
+  const now = new Date();
+  const endDate = new Date(this.endDate);
+  
+  // If trip ended in the past and is not already completed/cancelled
+  if (endDate < now && 
+      this.status !== 'completed' && 
+      this.status !== 'cancelled') {
+    
+    console.log(`🔄 Auto-completing trip ${this._id} (ended on ${this.endDate})`);
+    this.status = 'completed';
+    return true;
+  }
+  
+  return false;
+};
+
+// Add this static method to auto-complete all past trips for a user
+GroupSchema.statics.completeUserPastTrips = async function(userId) {
+  try {
+    const now = new Date();
+    const pastTrips = await this.find({
+      $or: [
+        { createdBy: userId },
+        { 'currentMembers.user': userId, 'currentMembers.status': 'approved' }
+      ],
+      endDate: { $lt: now },
+      status: { $in: ['planning', 'confirmed', 'active'] }
+    });
+    
+    let completedCount = 0;
+    for (const trip of pastTrips) {
+      trip.status = 'completed';
+      await trip.save();
+      completedCount++;
+      
+      // Add to user's pastTrips
+      const User = require('./User');
+      const user = await User.findById(userId);
+      if (user) {
+        const tripExists = user.pastTrips.some(pt => 
+          pt._id && pt._id.toString() === trip._id.toString()
+        );
+        
+        if (!tripExists) {
+          user.pastTrips.push({
+            _id: trip._id,
+            destination: trip.destination,
+            startDate: trip.startDate,
+            endDate: trip.endDate,
+            groupSize: trip.currentMembers.filter(m => m.status === 'approved').length,
+            description: trip.description,
+            budget: trip.budget,
+            status: 'completed',
+            isCreator: trip.createdBy.toString() === userId.toString()
+          });
+          await user.save();
+        }
+      }
+    }
+    
+    console.log(`✅ Auto-completed ${completedCount} past trips for user ${userId}`);
+    return completedCount;
+    
+  } catch (error) {
+    console.error('Error auto-completing past trips:', error);
+    return 0;
+  }
+};
+
+
 // 🔥 ENHANCED INDEXES FOR BETTER PERFORMANCE
 GroupSchema.index({ status: 1, endDate: 1 });
 GroupSchema.index({ createdBy: 1 });
