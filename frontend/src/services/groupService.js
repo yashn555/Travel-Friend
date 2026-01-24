@@ -26,7 +26,15 @@ export const getPendingRequests = async (groupId) => {
 
 // Approve or Reject request
 export const handleJoinRequest = async (groupId, requestId, action) => {
-  const response = await api.put('/groups/handle-request', { groupId, requestId, action });
+  console.log(`🎯 Handling ${action} for request ${requestId} in group ${groupId}`);
+  
+  // OPTION 1: Use the route with URL parameters (RECOMMENDED)
+  const response = await api.put(`/groups/${groupId}/handle-request/${requestId}`, { action });
+  
+  // OPTION 2: If you prefer body parameters, keep current but ensure backend handles it
+  // const response = await api.put('/groups/handle-request', { groupId, requestId, action });
+  
+  console.log('✅ Response:', response.data);
   return response.data;
 };
 

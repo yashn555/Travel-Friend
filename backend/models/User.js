@@ -548,6 +548,37 @@ UserSchema.methods.updateStats = function() {
     countriesVisited: this.pastTrips ? [...new Set(this.pastTrips.map(trip => trip.country).filter(Boolean))].length : 0
   };
 };
+// ==================== NEW METHODS FOR FOLLOW SYSTEM ====================
+// (Add these to the UserSchema methods section)
+
+// Check if user follows another user
+UserSchema.methods.isFollowing = function(userId) {
+  return this.following.some(f => 
+    f.user && f.user.toString() === userId.toString()
+  );
+};
+
+// Check if user is followed by another user
+UserSchema.methods.isFollowedBy = function(userId) {
+  return this.followers.some(f => 
+    f.user && f.user.toString() === userId.toString()
+  );
+};
+
+// Get clean follow arrays (just user IDs)
+UserSchema.methods.getFollowingIds = function() {
+  return this.following
+    .filter(f => f.user)
+    .map(f => f.user.toString());
+};
+
+UserSchema.methods.getFollowerIds = function() {
+  return this.followers
+    .filter(f => f.user)
+    .map(f => f.user.toString());
+};
+// ==================== END OF NEW METHODS ====================
+
 
 // Indexes for better performance
 UserSchema.index({ name: 'text', bio: 'text', city: 'text', state: 'text' });

@@ -15,7 +15,8 @@ const profileRoutes = require('./routes/profileRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const tripRoutes = require('./routes/tripRoutes');
-const userRoutes = require('./routes/userRoutes'); // ADD THIS LINE
+const userRoutes = require('./routes/userRoutes');
+const privateChatRoutes = require('./routes/privateChatRoutes'); // ADD THIS LINE
 
 // Initialize express
 const app = express();
@@ -52,7 +53,8 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/trips', tripRoutes);
-app.use('/api/users', userRoutes); // ADD THIS LINE
+app.use('/api/users', userRoutes);
+app.use('/api/private-chat', privateChatRoutes); // ADD THIS LINE
 
 // Health check
 app.get('/api/health', (req, res) => {

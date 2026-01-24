@@ -105,6 +105,25 @@ export const getGroupChat = (groupId) => api.get(`/chat/group/${groupId}`).then(
 export const sendChatMessage = (groupId, text) => api.post(`/chat/group/${groupId}/message`, { text }).then(res => res.data);
 export const getMyChats = () => api.get('/chat/my-chats').then(res => res.data);
 export const addUserToChat = (groupId, userId) => api.post(`/chat/group/${groupId}/add-user/${userId}`).then(res => res.data);
+export const checkMutualFollow = async (otherUserId) => {
+  const response = await api.get(`/users/check-mutual-follow/${otherUserId}`);
+  return response.data;
+};
+
+export const createOrGetPrivateChat = async (otherUserId) => {
+  const response = await api.post(`/chat/private/${otherUserId}`);
+  return response.data;
+};
+
+export const getPrivateChat = async (chatId) => {
+  const response = await api.get(`/chat/private/${chatId}`);
+  return response.data.data;
+};
+
+export const sendPrivateMessage = async (chatId, text) => {
+  const response = await api.post(`/chat/private/${chatId}/message`, { text });
+  return response.data;
+};
 
 // Trip Planning
 export const generateTripPlan = (groupId, prompt) => api.post('/trips/plan', { groupId, prompt }).then(res => res.data);
@@ -127,18 +146,17 @@ export const getRouteSuggestions = (groupId, startingCity) => api.get(`/trips/ro
 // Search users
 export const searchUsers = (query) => api.get(`/users/search?q=${encodeURIComponent(query)}`).then(res => res.data);
 
-export const createOrGetPrivateChat = async (otherUserId) => {
+export const checkFollowStatus = async (userId) => {
   try {
-    const response = await axios.post(`/api/chats/private/${otherUserId}`, {}, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    });
+    console.log(`🔍 Checking follow status for user: ${userId}`);
+    const response = await api.get(`/users/check-follow/${userId}`);
     return response.data;
   } catch (error) {
+    console.error('Check follow status error:', error.response?.data || error.message);
     throw error;
   }
 };
+
 
 
 export default api;

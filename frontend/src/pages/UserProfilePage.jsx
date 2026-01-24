@@ -1,21 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   getUserProfile, 
   followUser, 
   unfollowUser, 
   createOrGetPrivateChat,
-  getUserStats
+  getUserStats,
+  getCurrentUser,
+  checkFollowStatus
 } from '../services/api';
 import { 
   AiOutlineMessage, 
   AiOutlineStar, 
   AiOutlineCheck,
-  AiOutlineUserAdd
+  AiOutlineUserAdd,
+  AiOutlineReload,
+  AiOutlineUserDelete
 } from 'react-icons/ai';
 import { 
-  FaMapMarkerAlt, 
-  FaGlobeAmericas,
+  FaMapMarkerAlt,
   FaCalendarAlt,
   FaEnvelope,
   FaBirthdayCake,
@@ -28,6 +31,10 @@ import { MdTravelExplore } from 'react-icons/md';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 
+// Import from privateChatService - removed duplicate import of checkMutualFollow
+import { startPrivateChat } from '../services/privateChatService.js';
+import { checkMutualFollow } from '../services/privateChatService.js';
+
 const UserProfilePage = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
@@ -36,6 +43,42 @@ const UserProfilePage = () => {
   const [userStats, setUserStats] = useState(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [checkingFollow, setCheckingFollow] = useState(false);
+
+  // Function to check follow status from API
+  const checkFollowStatusFromAPI = useCallback(async () => {
+    try {
+      setCheckingFollow(true);
+      const response = await checkFollowStatus(userId);
+      console.log('✅ Follow status from API:', response.isFollowing);
+      setIsFollowing(response.isFollowing);
+      return response.isFollowing;
+    } catch (error) {
+      console.error('Error checking follow status:', error);
+      // Fallback to checking from current user data
+      try {
+        const currentUserResponse = await getCurrentUser();
+        const currentUser = currentUserResponse.data;
+        
+        if (currentUser.following && Array.isArray(currentUser.following)) {
+          const isFollowingThisUser = currentUser.following.some(follow => {
+            const followId = follow.user?._id || follow.user || follow;
+            return followId && followId.toString() === userId;
+          });
+          setIsFollowing(isFollowingThisUser);
+          return isFollowingThisUser;
+        }
+        return false;
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError);
+        return false;
+      }
+    } finally {
+      setCheckingFollow(false);
+    }
+  }, [userId]);
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -47,70 +90,170 @@ const UserProfilePage = () => {
     });
   };
 
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        setLoading(true);
-        const [profileRes, statsRes] = await Promise.all([
-          getUserProfile(userId),
-          getUserStats(userId)
-        ]);
-        
-        setUser(profileRes.profile);
-        setUserStats(statsRes.data);
-        setIsFollowing(profileRes.profile?.isFollowing || false);
-      } catch (err) {
-        console.error('Error fetching user profile:', err);
-        toast.error('Failed to load user profile');
-        navigate('/dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchUserProfile = async () => {
+    try {
+      setLoading(true);
+      const [profileRes, statsRes] = await Promise.all([
+        getUserProfile(userId),
+        getUserStats(userId)
+      ]);
+      
+      setUser(profileRes.profile);
+      setUserStats(statsRes.data);
+      
+      // Check follow status from API
+      await checkFollowStatusFromAPI();
+      
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
+      toast.error('Failed to load user profile');
+      navigate('/dashboard');
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
+  useEffect(() => {
     fetchUserProfile();
   }, [userId, navigate]);
 
+  const handleRefreshProfile = async () => {
+    setIsRefreshing(true);
+    await fetchUserProfile();
+    toast.success('Profile refreshed');
+  };
+
   const handleFollowAction = async () => {
     try {
+      setFollowLoading(true);
+      
       if (isFollowing) {
+        // Unfollow logic
+        console.log(`👥 Unfollowing user: ${userId}`);
         await unfollowUser(userId);
         setIsFollowing(false);
+        
+        // Update local state
+        setUser(prev => ({
+          ...prev,
+          followersCount: Math.max(0, (prev.followersCount || 0) - 1)
+        }));
+        
         toast.success('Unfollowed successfully');
       } else {
-        await followUser(userId);
-        setIsFollowing(true);
-        toast.success('Followed successfully');
+        // Follow logic
+        console.log(`👥 Following user: ${userId}`);
+        try {
+          const response = await followUser(userId);
+          
+          if (response.success) {
+            setIsFollowing(true);
+            
+            // Update local state
+            setUser(prev => ({
+              ...prev,
+              followersCount: (prev.followersCount || 0) + 1
+            }));
+            
+            toast.success('Followed successfully');
+          }
+        } catch (error) {
+          // Handle "Already following" error gracefully
+          if (error.response?.data?.message?.includes('Already following')) {
+            // Sync state
+            setIsFollowing(true);
+            await checkFollowStatusFromAPI(); // Double-check with API
+            toast.info('You are already following this user');
+          } else {
+            throw error;
+          }
+        }
       }
     } catch (err) {
       console.error('Follow action error:', err);
-      toast.error('Failed to perform action');
+      
+      // Handle errors
+      if (err.response?.status === 400) {
+        if (err.response?.data?.message?.includes('Already following')) {
+          setIsFollowing(true);
+          toast.info('You are already following this user');
+        } else if (err.response?.data?.message?.includes('Cannot follow yourself')) {
+          toast.error('You cannot follow yourself');
+        } else {
+          toast.error(err.response?.data?.message || 'Failed to follow user');
+        }
+      } else if (err.response?.status === 500) {
+        toast.error('Server error. Please try again.');
+      } else {
+        toast.error('Failed to perform action');
+      }
+    } finally {
+      setFollowLoading(false);
     }
   };
 
   const handleStartChat = async () => {
     try {
       setIsLoadingChat(true);
-      // Create or get existing private chat with this user
-      const response = await createOrGetPrivateChat(userId);
       
-      if (response.success) {
-        // Navigate to the private chat
-        navigate(`/chat/${response.chatId}`, {
-          state: {
-            chatName: user.name,
-            isPrivateChat: true,
-            otherUserId: userId,
-            otherUserName: user.name,
-            otherUserProfileImage: user.profileImage
+      // First check mutual follow status
+      try {
+        const mutualCheck = await checkMutualFollow(userId);
+        
+        if (!mutualCheck.isMutualFollow) {
+          let message = 'You can only chat with users who follow you back. ';
+          
+          if (!mutualCheck.currentUserFollows && !mutualCheck.otherUserFollows) {
+            message += 'You need to follow each other.';
+          } else if (!mutualCheck.currentUserFollows) {
+            message += 'You need to follow this user first.';
+          } else if (!mutualCheck.otherUserFollows) {
+            message += 'This user needs to follow you back.';
           }
-        });
-      } else {
-        toast.error('Failed to create chat');
+          
+          toast.warning(message);
+          
+          // Offer to follow if not following
+          if (!mutualCheck.currentUserFollows) {
+            const confirmFollow = window.confirm(
+              'You need to follow this user to chat. Would you like to follow them now?'
+            );
+            
+            if (confirmFollow) {
+              await handleFollowAction();
+              toast.info('Now wait for them to follow you back to start chatting');
+            }
+          }
+          return;
+        }
+        
+        // If mutual follow exists, start private chat
+        const response = await startPrivateChat(userId);
+        
+        if (response.success) {
+          // Navigate to private chat page
+          navigate(`/private-chat/${response.chatId}`, {
+            state: {
+              otherUser: user,
+              isNewChat: response.isNew
+            }
+          });
+          
+          if (response.isNew) {
+            toast.success('Private chat started!');
+          } else {
+            toast.info('Opening existing chat...');
+          }
+        }
+      } catch (error) {
+        console.error('Chat creation error:', error);
+        toast.error(error.response?.data?.message || 'Failed to start chat');
       }
+      
     } catch (err) {
-      console.error('Chat creation error:', err);
-      toast.error(err.response?.data?.message || 'Failed to start chat');
+      console.error('Chat error:', err);
+      toast.error('Failed to start chat. Please try again.');
     } finally {
       setIsLoadingChat(false);
     }
@@ -118,8 +261,8 @@ const UserProfilePage = () => {
 
   const renderRating = (rating) => {
     const stars = [];
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 >= 0.5;
+    const fullStars = Math.floor(rating || 4.5);
+    const hasHalfStar = (rating || 4.5) % 1 >= 0.5;
     
     for (let i = 1; i <= 5; i++) {
       if (i <= fullStars) {
@@ -131,6 +274,73 @@ const UserProfilePage = () => {
       }
     }
     return stars;
+  };
+
+  const renderFollowStatus = () => {
+    if (!user) return null;
+    
+    return (
+      <div className="mt-2 text-sm text-gray-600">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center">
+            <span className="font-medium">Followers:</span>
+            <span className="ml-2 bg-gray-100 px-2 py-1 rounded">{user.followersCount || 0}</span>
+          </div>
+          <div className="flex items-center">
+            <span className="font-medium">Following:</span>
+            <span className="ml-2 bg-gray-100 px-2 py-1 rounded">{user.followingCount || 0}</span>
+          </div>
+        </div>
+        
+        {isFollowing && (
+          <div className="mt-2 flex items-center text-green-600 bg-green-50 px-3 py-1 rounded-lg">
+            <AiOutlineCheck className="mr-2" />
+            <span>You are following this user</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Function to render follow button with proper state
+  const renderFollowButton = () => {
+    if (checkingFollow || followLoading) {
+      return (
+        <button
+          disabled
+          className="px-6 py-2 bg-gray-100 text-gray-400 rounded-lg font-medium flex items-center min-w-[120px] justify-center"
+        >
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400 mr-2"></div>
+          Checking...
+        </button>
+      );
+    }
+
+    return (
+      <button
+        onClick={handleFollowAction}
+        disabled={followLoading || isRefreshing}
+        className={`px-6 py-2 rounded-lg font-medium flex items-center transition-all min-w-[120px] justify-center ${
+          isFollowing
+            ? 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-300'
+            : 'bg-blue-500 hover:bg-blue-600 text-white shadow-md'
+        } disabled:opacity-50 disabled:cursor-not-allowed`}
+      >
+        {followLoading ? (
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+        ) : isFollowing ? (
+          <>
+            <AiOutlineUserDelete className="mr-2" />
+            Unfollow
+          </>
+        ) : (
+          <>
+            <AiOutlineUserAdd className="mr-2" />
+            Follow
+          </>
+        )}
+      </button>
+    );
   };
 
   if (loading) {
@@ -147,6 +357,12 @@ const UserProfilePage = () => {
       <div className="text-center py-16">
         <h2 className="text-xl font-semibold text-gray-800 mb-2">User Not Found</h2>
         <p className="text-gray-600">The user profile you're looking for doesn't exist</p>
+        <button 
+          onClick={() => navigate('/dashboard')}
+          className="mt-4 px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
+        >
+          Back to Dashboard
+        </button>
       </div>
     );
   }
@@ -167,61 +383,62 @@ const UserProfilePage = () => {
               className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg"
             />
           </div>
+          
+          {/* Refresh button */}
+          <div className="absolute top-4 right-4">
+            <button
+              onClick={handleRefreshProfile}
+              disabled={isRefreshing}
+              className="px-3 py-2 bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white rounded-lg flex items-center text-sm disabled:opacity-50 transition-all"
+            >
+              <AiOutlineReload className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         <div className="pt-20 pb-6 px-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800">{user.name}</h1>
-              <div className="flex items-center flex-wrap gap-4 mt-2">
-                {user.email && (
-                  <div className="flex items-center text-gray-600">
-                    <FaEnvelope className="mr-2" />
-                    {user.email}
+            <div className="flex-1">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-800">{user.name}</h1>
+                  <div className="flex items-center flex-wrap gap-4 mt-2">
+                    {user.email && (
+                      <div className="flex items-center text-gray-600">
+                        <FaEnvelope className="mr-2" />
+                        {user.email}
+                      </div>
+                    )}
+                    {user.city && (
+                      <div className="flex items-center text-gray-600">
+                        <FaMapMarkerAlt className="mr-2" />
+                        {user.city}, {user.state}
+                      </div>
+                    )}
+                    <div className="flex items-center">
+                      {renderRating(user.rating)}
+                      <span className="ml-2 font-medium">{(user.rating || 4.5).toFixed(1)}</span>
+                    </div>
                   </div>
-                )}
-                {user.city && (
-                  <div className="flex items-center text-gray-600">
-                    <FaMapMarkerAlt className="mr-2" />
-                    {user.city}, {user.state}
-                  </div>
-                )}
-                <div className="flex items-center">
-                  {renderRating(user.rating || 4.5)}
-                  <span className="ml-2 font-medium">{user.rating?.toFixed(1) || '4.5'}</span>
                 </div>
               </div>
+              
+              {renderFollowStatus()}
             </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={handleFollowAction}
-                className={`px-6 py-2 rounded-lg font-medium flex items-center ${
-                  isFollowing
-                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    : 'bg-blue-500 hover:bg-blue-600 text-white'
-                }`}
-              >
-                {isFollowing ? (
-                  <>
-                    <AiOutlineCheck className="mr-2" />
-                    Following
-                  </>
-                ) : (
-                  <>
-                    <AiOutlineUserAdd className="mr-2" />
-                    Follow
-                  </>
-                )}
-              </button>
+            <div className="flex gap-3 flex-wrap mt-4 md:mt-0">
+              {/* Follow Button */}
+              {renderFollowButton()}
 
+              {/* Message Button */}
               <button
                 onClick={handleStartChat}
-                disabled={isLoadingChat}
-                className="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-medium flex items-center disabled:opacity-50"
+                disabled={isLoadingChat || checkingFollow}
+                className="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all"
               >
                 <AiOutlineMessage className="mr-2" />
-                {isLoadingChat ? 'Starting Chat...' : 'Message'}
+                {isLoadingChat ? 'Checking...' : 'Message'}
               </button>
             </div>
           </div>
@@ -238,7 +455,7 @@ const UserProfilePage = () => {
               {user.bio || 'No bio provided.'}
             </p>
 
-            <div className="grid grid-cols-2 gap-4 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
               {user.dateOfBirth && (
                 <div className="flex items-center">
                   <FaBirthdayCake className="text-gray-400 mr-3" />
@@ -286,7 +503,7 @@ const UserProfilePage = () => {
             <div className="bg-white rounded-xl shadow border border-gray-200 p-6">
               <h3 className="text-xl font-semibold text-gray-800 mb-4">Travel Preferences</h3>
               <div className="flex flex-wrap gap-2">
-                {Object.entries(user.travelPreferences).map(([key, value]) => 
+                {Object.entries(user.travelPreferences || {}).map(([key, value]) => 
                   value && (
                     <span
                       key={key}
@@ -306,7 +523,7 @@ const UserProfilePage = () => {
               <h3 className="text-xl font-semibold text-gray-800 mb-4">Recent Trips</h3>
               <div className="space-y-4">
                 {user.pastTrips.slice(0, 3).map((trip, index) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4">
+                  <div key={index} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
                     <div className="flex justify-between items-start">
                       <h4 className="font-semibold text-gray-800">{trip.destination}</h4>
                       {trip.rating && (
@@ -366,37 +583,25 @@ const UserProfilePage = () => {
               <h3 className="text-xl font-semibold text-gray-800 mb-4">Social Links</h3>
               <div className="space-y-3">
                 {user.socialLinks.instagram && (
-                  <a href={`https://instagram.com/${user.socialLinks.instagram}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-pink-600 hover:text-pink-700">
+                  <a href={`https://instagram.com/${user.socialLinks.instagram}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-pink-600 hover:text-pink-700 hover:underline">
                     <span className="mr-2">📷</span> Instagram
                   </a>
                 )}
                 {user.socialLinks.twitter && (
-                  <a href={`https://twitter.com/${user.socialLinks.twitter}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-400 hover:text-blue-500">
+                  <a href={`https://twitter.com/${user.socialLinks.twitter}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-400 hover:text-blue-500 hover:underline">
                     <span className="mr-2">🐦</span> Twitter
                   </a>
                 )}
                 {user.socialLinks.facebook && (
-                  <a href={`https://facebook.com/${user.socialLinks.facebook}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-600 hover:text-blue-700">
+                  <a href={`https://facebook.com/${user.socialLinks.facebook}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-600 hover:text-blue-700 hover:underline">
                     <span className="mr-2">📘</span> Facebook
                   </a>
                 )}
                 {user.socialLinks.linkedin && (
-                  <a href={`https://linkedin.com/in/${user.socialLinks.linkedin}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-700 hover:text-blue-800">
+                  <a href={`https://linkedin.com/in/${user.socialLinks.linkedin}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-700 hover:text-blue-800 hover:underline">
                     <span className="mr-2">💼</span> LinkedIn
                   </a>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Mutual Friends */}
-          {user.mutualFriendsCount > 0 && (
-            <div className="bg-white rounded-xl shadow border border-gray-200 p-6">
-              <h3 className="text-xl font-semibold text-gray-800 mb-4">
-                Mutual Friends ({user.mutualFriendsCount})
-              </h3>
-              <div className="text-sm text-gray-600">
-                You have {user.mutualFriendsCount} mutual friend{user.mutualFriendsCount !== 1 ? 's' : ''}
               </div>
             </div>
           )}

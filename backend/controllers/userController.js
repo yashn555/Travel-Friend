@@ -1411,3 +1411,119 @@ exports.removeFriend = async (req, res) => {
     });
   }
 };
+// In backend/controllers/userController.js - Add this function
+
+// @desc    Check mutual follow status for chat - FIXED VERSION
+// @route   GET /api/users/check-mutual-follow/:userId
+// @access  Private
+exports.checkMutualFollow = async (req, res) => {
+  try {
+    const { userId: otherUserId } = req.params;
+    const currentUserId = req.user.id;
+
+    console.log(`🤝 [CHAT] Checking mutual follow for chat access:`);
+    console.log(`   Current User: ${currentUserId}`);
+    console.log(`   Other User: ${otherUserId}`);
+
+    // Can't chat with yourself
+    if (currentUserId === otherUserId) {
+      return res.json({
+        success: true,
+        isMutualFollow: false,
+        currentUserFollows: false,
+        otherUserFollows: false,
+        message: 'Cannot chat with yourself'
+      });
+    }
+
+    // Get both users
+    const [currentUser, otherUser] = await Promise.all([
+      User.findById(currentUserId).select('following followers'),
+      User.findById(otherUserId).select('following followers')
+    ]);
+
+    if (!otherUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check using new helper methods
+    const currentUserFollows = currentUser.isFollowing(otherUserId);
+    const otherUserFollows = otherUser.isFollowedBy(currentUserId);
+
+    console.log(`   Current follows Other: ${currentUserFollows}`);
+    console.log(`   Other follows Current: ${otherUserFollows}`);
+    console.log(`   Can Start Chat: ${currentUserFollows && otherUserFollows}`);
+
+    res.json({
+      success: true,
+      isMutualFollow: currentUserFollows && otherUserFollows,
+      currentUserFollows,
+      otherUserFollows,
+      message: currentUserFollows && otherUserFollows 
+        ? 'You can chat with this user' 
+        : 'You need to follow each other to chat'
+    });
+
+  } catch (error) {
+    console.error('❌ Error checking mutual follow:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking follow status'
+    });
+  }
+};
+
+// backend/controllers/userController.js - ADD THIS FUNCTION
+
+// @desc    Check if current user is following another user - FIXED VERSION
+// @route   GET /api/users/check-follow/:userId
+// @access  Private
+exports.checkFollowStatus = async (req, res) => {
+  try {
+    const { userId: targetUserId } = req.params;
+    const currentUserId = req.user.id;
+
+    console.log(`🔍 Checking follow status: ${currentUserId} -> ${targetUserId}`);
+
+    // Can't follow yourself
+    if (currentUserId === targetUserId) {
+      return res.json({
+        success: true,
+        isFollowing: false,
+        message: 'Cannot follow yourself'
+      });
+    }
+
+    // Check if target user exists
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const currentUser = await User.findById(currentUserId).select('following');
+
+    // Check if current user follows target user
+    const isFollowing = currentUser.isFollowing(targetUserId);
+
+    console.log(`📊 Follow status: ${isFollowing ? 'Following' : 'Not following'}`);
+
+    res.json({
+      success: true,
+      isFollowing,
+      message: isFollowing ? 'Already following' : 'Not following'
+    });
+
+  } catch (error) {
+    console.error('❌ Error checking follow status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking follow status'
+    });
+  }
+};

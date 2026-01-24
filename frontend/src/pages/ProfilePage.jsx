@@ -11,7 +11,7 @@ import {
   getFriendsList,
   getFollowersList,
   getFollowingList,
-  getTripHistory, // Added for trip history
+  getTripHistory,
 } from '../services/api';
 import { 
   AiOutlineCamera, 
@@ -66,6 +66,7 @@ const ProfilePage = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const [activeConnectionsTab, setActiveConnectionsTab] = useState('friends-list'); // ADDED: Separate state for connections tabs
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -78,7 +79,7 @@ const ProfilePage = () => {
   const [following, setFollowing] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   
-  // Trip History State - ADDED
+  // Trip History State
   const [trips, setTrips] = useState([]);
   const [tripsLoading, setTripsLoading] = useState(false);
   
@@ -170,7 +171,6 @@ const ProfilePage = () => {
   const fetchProfileData = async () => {
     try {
       setRefreshing(true);
-      console.log('🔄 Fetching profile data...');
       
       // Fetch all data in parallel
       const [profileRes, statsRes, friendsRes, followersRes, followingRes] = await Promise.all([
@@ -180,12 +180,6 @@ const ProfilePage = () => {
         getFollowersList(),
         getFollowingList()
       ]);
-
-      console.log('📊 Profile API Response:', profileRes);
-      console.log('📈 Stats API Response:', statsRes);
-      console.log('👥 Friends API Response:', friendsRes);
-      console.log('👤 Followers API Response:', followersRes);
-      console.log('👣 Following API Response:', followingRes);
 
       // Extract profile data
       let profileData = null;
@@ -198,8 +192,6 @@ const ProfilePage = () => {
           profileData = profileRes;
         }
       }
-      
-      console.log('🎯 Extracted Profile Data:', profileData);
       
       if (profileData) {
         setProfile(profileData);
@@ -253,10 +245,8 @@ const ProfilePage = () => {
           }
         };
         
-        console.log('📝 Initial Form Data:', initialFormData);
         setFormData(initialFormData);
       } else {
-        console.error('❌ No profile data found');
         toast.error('Failed to load profile data');
       }
 
@@ -289,7 +279,7 @@ const ProfilePage = () => {
       }
       
     } catch (err) {
-      console.error('❌ Profile fetch error:', err);
+      console.error('Profile fetch error:', err);
       toast.error('Error loading profile data');
     } finally {
       setLoading(false);
@@ -297,14 +287,12 @@ const ProfilePage = () => {
     }
   };
 
-  // ========== ADDED: Fetch Trip History Function ==========
+  // Fetch Trip History Function
   const fetchTripHistory = async () => {
     try {
       setTripsLoading(true);
-      console.log('🔄 Fetching trip history...');
       
       const res = await getTripHistory();
-      console.log('📊 Trip history response:', res);
       
       if (res.success) {
         setTrips(res.data || []);
@@ -312,7 +300,7 @@ const ProfilePage = () => {
         toast.error(res.message || 'Failed to load trip history');
       }
     } catch (err) {
-      console.error('❌ Error fetching trip history:', err);
+      console.error('Error fetching trip history:', err);
       toast.error('Failed to load trip history');
     } finally {
       setTripsLoading(false);
@@ -322,7 +310,7 @@ const ProfilePage = () => {
   useEffect(() => {
     fetchProfileData();
     getLocation();
-    fetchTripHistory(); // Added: Fetch trip history on component mount
+    fetchTripHistory();
   }, []);
 
   // Handle form input change
@@ -380,7 +368,6 @@ const ProfilePage = () => {
     e.preventDefault();
     setUpdating(true);
     try {
-      console.log('📤 Updating profile with:', formData);
       
       const updateData = {
         ...formData,
@@ -397,7 +384,6 @@ const ProfilePage = () => {
       }
       
       const res = await updateProfile(updateData);
-      console.log('✅ Update response:', res);
       
       if (res.success) {
         // Update local profile state
@@ -411,7 +397,7 @@ const ProfilePage = () => {
         toast.error(res.message || 'Failed to update profile');
       }
     } catch (err) {
-      console.error('❌ Profile update error:', err);
+      console.error('Profile update error:', err);
       toast.error(err.response?.data?.message || 'Failed to update profile');
     } finally {
       setUpdating(false);
@@ -468,7 +454,6 @@ const ProfilePage = () => {
     setSearching(true);
     try {
       const res = await searchUsers(searchQuery);
-      console.log('Search response:', res);
       
       if (res.success) {
         const results = res.data || res.users || res;
@@ -491,7 +476,6 @@ const ProfilePage = () => {
   // Handle follow/unfollow
   const handleFollowAction = async (userId, isCurrentlyFollowing) => {
     try {
-      console.log(`Following action for ${userId}, currently following: ${isCurrentlyFollowing}`);
       
       let res;
       if (isCurrentlyFollowing) {
@@ -499,8 +483,6 @@ const ProfilePage = () => {
       } else {
         res = await followUser(userId);
       }
-      
-      console.log('Follow action response:', res);
       
       if (res.success) {
         const action = isCurrentlyFollowing ? 'Unfollowed' : 'Followed';
@@ -566,7 +548,7 @@ const ProfilePage = () => {
     }
   };
 
-  // Handle profile image upload - FIXED
+  // Handle profile image upload
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -586,12 +568,9 @@ const ProfilePage = () => {
     try {
       // Create FormData properly
       const formDataImage = new FormData();
-      formDataImage.append('image', file); // Use 'image' as per your controller
-      
-      console.log('📤 Uploading image:', file.name, file.type, file.size);
+      formDataImage.append('image', file);
       
       const res = await uploadProfileImage(formDataImage);
-      console.log('✅ Image upload response:', res);
       
       if (res.success) {
         // Update local state
@@ -608,8 +587,7 @@ const ProfilePage = () => {
         toast.error(res.message || 'Failed to upload image');
       }
     } catch (err) {
-      console.error('❌ Image upload error:', err);
-      console.error('Error details:', err.response?.data);
+      console.error('Image upload error:', err);
       toast.error(err.response?.data?.message || 'Failed to upload image. Please try a different image.');
     } finally {
       setImageUploading(false);
@@ -722,8 +700,6 @@ const ProfilePage = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-4">
-    
-
       {/* Header with Live Location */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -965,20 +941,25 @@ const ProfilePage = () => {
             </div>
           </div>
 
-          {/* Tabs */}
+          {/* Main Tabs */}
           <div className="border-b border-gray-200 mb-8">
             <nav className="flex flex-wrap -mb-px">
               {[
                 { id: 'overview', label: 'Overview', icon: <AiOutlineUserAdd /> },
                 { id: 'edit', label: 'Edit Profile', icon: <AiOutlineEdit /> },
                 { id: 'trips', label: 'Trip History', icon: <AiOutlineHistory /> },
-                { id: 'friends', label: 'Friends', icon: <FaUserFriends /> },
+                { id: 'connections', label: 'Connections', icon: <FaUserFriends /> },
                 { id: 'security', label: 'Security', icon: <AiOutlineLock /> },
                 { id: 'settings', label: 'Settings', icon: <AiOutlineSetting /> }
               ].map(tab => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    if (tab.id === 'connections') {
+                      setActiveConnectionsTab('friends-list');
+                    }
+                  }}
                   className={`mr-8 py-4 px-1 font-medium text-sm border-b-2 transition-colors flex items-center ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600'
@@ -998,7 +979,7 @@ const ProfilePage = () => {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column - Personal Info */}
                 <div className="lg:col-span-2 space-y-6">
-                                   {/* Bio */}
+                  {/* Bio */}
                   <div className="bg-gray-50 rounded-xl p-6">
                     <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
                       <AiOutlineMessage className="mr-2" />
@@ -1670,7 +1651,7 @@ const ProfilePage = () => {
                       </p>
                     </div>
                     <button
-                      onClick={() => window.location.href = '/plan-trip'}
+                      onClick={() => window.location.href = '/create-trip'}
                       className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center"
                     >
                       <MdTravelExplore className="mr-2" />
@@ -1681,21 +1662,22 @@ const ProfilePage = () => {
               </div>
             )}
 
-            {activeTab === 'friends' && (
+            {/* CONNECTIONS TAB - FIXED VERSION */}
+            {activeTab === 'connections' && (
               <div className="space-y-8">
-                {/* Friends, Followers, Following Navigation */}
+                {/* Connections Sub-Tabs */}
                 <div className="border-b border-gray-200">
                   <nav className="flex space-x-8">
                     {[
-                      { id: 'friends', label: `Friends (${friends.length})`, icon: <FaUserFriends /> },
-                      { id: 'followers', label: `Followers (${followers.length})`, icon: <FaUserPlus /> },
-                      { id: 'following', label: `Following (${following.length})`, icon: <AiOutlineUserAdd /> }
+                      { id: 'friends-list', label: `Friends (${friends.length})`, icon: <FaUserFriends /> },
+                      { id: 'followers-list', label: `Followers (${followers.length})`, icon: <FaUserPlus /> },
+                      { id: 'following-list', label: `Following (${following.length})`, icon: <AiOutlineUserAdd /> }
                     ].map(tab => (
                       <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => setActiveConnectionsTab(tab.id)}
                         className={`py-3 px-1 font-medium border-b-2 transition-colors flex items-center ${
-                          activeTab === tab.id
+                          activeConnectionsTab === tab.id
                             ? 'border-blue-500 text-blue-600'
                             : 'border-transparent text-gray-500 hover:text-gray-700'
                         }`}
@@ -1708,15 +1690,19 @@ const ProfilePage = () => {
                 </div>
 
                 {/* Friends List */}
-                {activeTab === 'friends' && (
+                {activeConnectionsTab === 'friends-list' && (
                   <div>
                     <div className="flex justify-between items-center mb-6">
                       <h3 className="text-2xl font-bold text-gray-800">My Friends</h3>
                       <button
-                        onClick={() => setActiveTab('overview')}
-                        className="text-blue-500 hover:text-blue-600"
+                        onClick={() => {
+                          setActiveTab('overview');
+                          setSearchQuery('');
+                          setSearchResults([]);
+                        }}
+                        className="text-blue-500 hover:text-blue-600 flex items-center"
                       >
-                        <AiOutlineSearch className="inline mr-1" />
+                        <AiOutlineSearch className="mr-2" />
                         Find More Friends
                       </button>
                     </div>
@@ -1727,7 +1713,11 @@ const ProfilePage = () => {
                         <h4 className="text-xl font-semibold text-gray-700 mb-2">No Friends Yet</h4>
                         <p className="text-gray-500 mb-4">Start following people to build your travel network.</p>
                         <button
-                          onClick={() => setActiveTab('overview')}
+                          onClick={() => {
+                            setActiveTab('overview');
+                            setSearchQuery('');
+                            setSearchResults([]);
+                          }}
                           className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg"
                         >
                           Find Travel Buddies
@@ -1759,6 +1749,11 @@ const ProfilePage = () => {
                                   <FaMapMarkerAlt className="mr-1 text-xs" />
                                   {friend.city || friend.town || 'Location not set'}
                                 </div>
+                                {friend.mutualFriendsCount > 0 && (
+                                  <div className="mt-1 text-blue-600">
+                                    {friend.mutualFriendsCount} mutual friend{friend.mutualFriendsCount !== 1 ? 's' : ''}
+                                  </div>
+                                )}
                               </div>
                               
                               <div className="w-full space-y-2">
@@ -1785,12 +1780,12 @@ const ProfilePage = () => {
                 )}
 
                 {/* Followers List */}
-                {activeTab === 'followers' && (
+                {activeConnectionsTab === 'followers-list' && (
                   <div>
                     <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-2xl font-bold text-gray-800">My Followers</h3>
+                      <h3 className="text-2xl font-bold text-gray-800">My Followers ({followers.length})</h3>
                       <div className="text-sm text-gray-500">
-                        {followers.filter(f => f.isFollowingBack).length} mutual follows
+                        {followers.filter(f => f.isFollowingBack || f.followsMeBack).length} mutual follows
                       </div>
                     </div>
                     
@@ -1798,68 +1793,97 @@ const ProfilePage = () => {
                       <div className="text-center py-12 bg-gray-50 rounded-xl">
                         <div className="text-6xl mb-4">👤</div>
                         <h4 className="text-xl font-semibold text-gray-700 mb-2">No Followers Yet</h4>
-                        <p className="text-gray-500">Share your profile to get more followers.</p>
+                        <p className="text-gray-500 mb-4">Share your profile to get more followers.</p>
+                        <button
+                          onClick={() => {
+                            setActiveTab('overview');
+                            setSearchQuery('');
+                            setSearchResults([]);
+                          }}
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg"
+                        >
+                          Connect with People
+                        </button>
                       </div>
                     ) : (
-                      <div className="space-y-4">
-                        {followers.map((follower, index) => (
-                          <div key={follower._id || follower.id || index} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {followers.map((follower, index) => {
+                          const isMutualFollow = follower.isFollowingBack || follower.followsMeBack;
+                          
+                          return (
+                            <div key={follower._id || follower.id || index} className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+                              <div className="flex flex-col items-center text-center">
                                 <img
                                   src={
                                     follower.profileImage && follower.profileImage !== 'default-profile.jpg'
                                       ? `http://localhost:5000/uploads/profiles/${follower.profileImage}`
-                                      : `https://ui-avatars.com/api/?name=${encodeURIComponent(follower.name || 'User')}&background=random&size=50`
+                                      : `https://ui-avatars.com/api/?name=${encodeURIComponent(follower.name || 'User')}&background=random&size=80`
                                   }
                                   alt={follower.name || 'Follower'}
-                                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+                                  className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg mb-4"
                                 />
-                                <div className="ml-4">
-                                  <h4 className="font-bold text-gray-800">{follower.name || 'Unknown User'}</h4>
-                                  <div className="flex items-center text-sm text-gray-500">
+                                <h4 className="font-bold text-lg text-gray-800">{follower.name || 'Unknown User'}</h4>
+                                
+                                <div className="flex items-center justify-center mt-2 mb-3">
+                                  {renderRating(follower.rating || 4.5)}
+                                  <span className="ml-2 text-sm text-gray-600">{follower.rating?.toFixed(1) || '4.5'}</span>
+                                </div>
+                                
+                                <div className="text-sm text-gray-500 mb-4">
+                                  <div className="flex items-center justify-center">
                                     <FaMapMarkerAlt className="mr-1 text-xs" />
                                     {follower.city || follower.town || 'Location not set'}
                                   </div>
+                                  {isMutualFollow && (
+                                    <div className="mt-1 text-green-600 flex items-center justify-center">
+                                      <AiOutlineCheck className="mr-1" />
+                                      Mutual follow
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div className="w-full space-y-2">
+                                  <button
+                                    onClick={() => window.location.href = `/user/${follower._id || follower.id}`}
+                                    className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm font-medium"
+                                  >
+                                    View Profile
+                                  </button>
+                                  
+                                  {!isMutualFollow ? (
+                                    <button
+                                      onClick={() => handleFollowBack(follower._id || follower.id)}
+                                      className="w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center"
+                                    >
+                                      <AiOutlineUserAdd className="mr-2" />
+                                      Follow Back
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleUnfollow(follower._id || follower.id)}
+                                      className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-2 rounded-lg text-sm font-medium flex items-center justify-center"
+                                    >
+                                      <FaTrash className="mr-2" />
+                                      Unfollow
+                                    </button>
+                                  )}
                                 </div>
                               </div>
-                              
-                              <div className="flex items-center space-x-3">
-                                {follower.isFollowingBack ? (
-                                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                                    <FaCheck className="inline mr-1" />
-                                    Following
-                                  </span>
-                                ) : (
-                                  <button
-                                    onClick={() => handleFollowBack(follower._id || follower.id)}
-                                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium"
-                                  >
-                                    Follow Back
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => window.location.href = `/user/${follower._id || follower.id}`}
-                                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
-                                >
-                                  View
-                                </button>
-                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
                 )}
 
                 {/* Following List */}
-                {activeTab === 'following' && (
+                {activeConnectionsTab === 'following-list' && (
                   <div>
                     <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-2xl font-bold text-gray-800">Following</h3>
+                      <h3 className="text-2xl font-bold text-gray-800">Following ({following.length})</h3>
                       <div className="text-sm text-gray-500">
-                        {following.length} people
+                        {following.filter(f => f.followsMeBack).length} mutual follows
                       </div>
                     </div>
                     
@@ -1867,49 +1891,79 @@ const ProfilePage = () => {
                       <div className="text-center py-12 bg-gray-50 rounded-xl">
                         <div className="text-6xl mb-4">👣</div>
                         <h4 className="text-xl font-semibold text-gray-700 mb-2">Not Following Anyone</h4>
-                        <p className="text-gray-500">Start following travelers to see their updates.</p>
+                        <p className="text-gray-500 mb-4">Start following travelers to see their updates.</p>
+                        <button
+                          onClick={() => {
+                            setActiveTab('overview');
+                            setSearchQuery('');
+                            setSearchResults([]);
+                          }}
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg"
+                        >
+                          Find People to Follow
+                        </button>
                       </div>
                     ) : (
-                      <div className="space-y-4">
-                        {following.map((user, index) => (
-                          <div key={user._id || user.id || index} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {following.map((user, index) => {
+                          const isMutualFollow = user.followsMeBack;
+                          
+                          return (
+                            <div key={user._id || user.id || index} className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+                              <div className="flex flex-col items-center text-center">
                                 <img
                                   src={
                                     user.profileImage && user.profileImage !== 'default-profile.jpg'
                                       ? `http://localhost:5000/uploads/profiles/${user.profileImage}`
-                                      : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random&size=50`
+                                      : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=random&size=80`
                                   }
                                   alt={user.name || 'User'}
-                                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+                                  className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg mb-4"
                                 />
-                                <div className="ml-4">
-                                  <h4 className="font-bold text-gray-800">{user.name || 'Unknown User'}</h4>
-                                  <div className="flex items-center text-sm text-gray-500">
+                                <h4 className="font-bold text-lg text-gray-800">{user.name || 'Unknown User'}</h4>
+                                
+                                <div className="flex items-center justify-center mt-2 mb-3">
+                                  {renderRating(user.rating || 4.5)}
+                                  <span className="ml-2 text-sm text-gray-600">{user.rating?.toFixed(1) || '4.5'}</span>
+                                </div>
+                                
+                                <div className="text-sm text-gray-500 mb-4">
+                                  <div className="flex items-center justify-center">
                                     <FaMapMarkerAlt className="mr-1 text-xs" />
                                     {user.city || user.town || 'Location not set'}
                                   </div>
+                                  {isMutualFollow ? (
+                                    <div className="mt-1 text-green-600 flex items-center justify-center">
+                                      <AiOutlineCheck className="mr-1" />
+                                      Follows you back
+                                    </div>
+                                  ) : (
+                                    <div className="mt-1 text-yellow-600 flex items-center justify-center">
+                                      Not following back
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div className="w-full space-y-2">
+                                  <button
+                                    onClick={() => window.location.href = `/user/${user._id || user.id}`}
+                                    className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm font-medium"
+                                  >
+                                    View Profile
+                                  </button>
+                                  
+                                  <button
+                                    onClick={() => handleUnfollow(user._id || user.id)}
+                                    className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-2 rounded-lg text-sm font-medium flex items-center justify-center"
+                                  >
+                                    <FaTrash className="mr-2" />
+                                    Unfollow
+                                  </button>
                                 </div>
                               </div>
-                              
-                              <div className="flex items-center space-x-3">
-                                <button
-                                  onClick={() => handleUnfollow(user._id || user.id)}
-                                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium"
-                                >
-                                  Unfollow
-                                </button>
-                                <button
-                                  onClick={() => window.location.href = `/user/${user._id || user.id}`}
-                                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium"
-                                >
-                                  View
-                                </button>
-                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

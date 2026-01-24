@@ -1,3 +1,4 @@
+// frontend/src/App.jsx - Update the imports and routes
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -9,7 +10,7 @@ import LoginPage from './pages/auth/LoginPage';
 import VerifyOTPPage from './pages/auth/VerifyOTPPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
-import UserProfilePage from './pages/UserProfilePage'; // ADD THIS IMPORT
+import UserProfilePage from './pages/UserProfilePage'; // This should exist based on your earlier code
 import CreateTripPage from './pages/trips/CreateTripPage';
 import GroupListPage from './pages/groups/GroupListPage';
 import GroupDetailsPage from './pages/groups/GroupDetailsPage';
@@ -19,6 +20,8 @@ import GroupChatPage from './pages/chat/GroupChatPage';
 import ChatPage from './pages/chat/ChatPage';
 import NotificationsPage from './pages/notifications/NotificationsPage';
 import EditGroupPage from './pages/groups/EditGroupPage';
+import PrivateChatList from './pages/private-chat/PrivateChatList';
+import PrivateChatRoom from './pages/private-chat/PrivateChatRoom';
 
 // Components
 import Header from './components/layout/Header';
@@ -52,7 +55,7 @@ function App() {
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             
-            {/* ADD THIS ROUTE for User Profile */}
+            {/* User Profile */}
             <Route path="/user/:userId" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
             
             <Route path="/create-trip" element={<ProtectedRoute><CreateTripPage /></ProtectedRoute>} />
@@ -61,10 +64,16 @@ function App() {
             <Route path="/groups/:id/chat" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
             <Route path="/my-groups" element={<ProtectedRoute><MyGroupsPage /></ProtectedRoute>} />
             <Route path="/group-requests" element={<ProtectedRoute><GroupRequests /></ProtectedRoute>} />
+            
+            {/* Chat Routes */}
             <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+            <Route path="/private-chat" element={<PrivateChatList />} />
+            <Route path="/private-chat/:chatId" element={<PrivateChatRoom />} />
+            
+            
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/edit-group/:id" element={<ProtectedRoute><EditGroupPage /></ProtectedRoute>} />
-            <Route path="/chat/user/:userId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+            
             {/* Default */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
