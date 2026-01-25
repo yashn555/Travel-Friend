@@ -17,6 +17,7 @@ const chatRoutes = require('./routes/chatRoutes');
 const tripRoutes = require('./routes/tripRoutes');
 const userRoutes = require('./routes/userRoutes');
 const privateChatRoutes = require('./routes/privateChatRoutes'); // ADD THIS LINE
+const matchRoutes = require('./routes/matchRoutes');
 
 // Initialize express
 const app = express();
@@ -55,6 +56,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/trips', tripRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/private-chat', privateChatRoutes); // ADD THIS LINE
+app.use('/api/match', matchRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -117,9 +117,12 @@ const startPrivateChat = async (req, res) => {
       });
     }
 
-    // Check if chat already exists
+    // Create sorted participants array for consistent query
+    const participants = [currentUserId, userId].sort();
+    
+    // Check if chat already exists using sorted participants
     let chat = await PrivateChat.findOne({
-      participants: { $all: [currentUserId, userId], $size: 2 }
+      participants: participants
     })
     .populate('participants', 'name profileImage email')
     .populate('lastMessage');
@@ -141,9 +144,9 @@ const startPrivateChat = async (req, res) => {
       });
     }
 
-    // Create new private chat
+    // Create new private chat with sorted participants
     chat = await PrivateChat.create({
-      participants: [currentUserId, userId]
+      participants: participants
     });
 
     // Populate participant details
@@ -160,13 +163,33 @@ const startPrivateChat = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error starting private chat:', error);
+    
+    // Handle duplicate key error
+    if (error.code === 11000) {
+      // Try to find existing chat
+      const participants = [req.user._id, userId].sort();
+      const existingChat = await PrivateChat.findOne({
+        participants: participants
+      })
+      .populate('participants', 'name profileImage email');
+      
+      if (existingChat) {
+        return res.json({
+          success: true,
+          chatId: existingChat._id,
+          chat: existingChat,
+          isNew: false,
+          message: 'Chat already exists'
+        });
+      }
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Error starting private chat'
     });
   }
 };
-
 // @desc    Get all private chats for current user
 // @route   GET /api/private-chat
 // @access  Private

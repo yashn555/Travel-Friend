@@ -23,7 +23,8 @@ import EditGroupPage from './pages/groups/EditGroupPage';
 import PrivateChatList from './pages/private-chat/PrivateChatList';
 import PrivateChatRoom from './pages/private-chat/PrivateChatRoom';
 import FindFriendsPage from './pages/FindFriendsPage'; // Added import
-
+import MatchPage from './pages/Match/MatchPage';
+import SimpleAboutPage from './pages/SimpleAboutPage';
 // Components
 import Header from './components/layout/Header';
 
@@ -55,6 +56,7 @@ function App() {
             {/* Protected */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+             <Route path="/about" element={<SimpleAboutPage />} />
             
             {/* User Profile */}
             <Route path="/user/:userId" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
@@ -77,6 +79,9 @@ function App() {
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/edit-group/:id" element={<ProtectedRoute><EditGroupPage /></ProtectedRoute>} />
             
+            {/* Match Routes */}
+            <Route path="/match-travelers" element={<MatchPage />} />
+
             {/* Default */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
 

@@ -4,6 +4,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { logoutAsync } from '../../redux/slices/authSlice';
 import { getMyChats } from '../../services/chatService';
 import { getCurrentUser } from '../../services/authService';
+import logo from '../../assets/travel-friend-logo.png';
 import {
   FaBell,
   FaEnvelope,
@@ -72,25 +73,25 @@ const Header = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 lg:h-20">
           
-          {/* LEFT – LOGO */}
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="relative">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white text-2xl shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                <FaGlobeAmericas />
-              </div>
-              <div className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-amber-400 to-orange-500 rounded-full flex items-center justify-center animate-pulse">
-                <HiOutlineSparkles className="text-white text-xs" />
-              </div>
-            </div>
-            <div>
-              <span className="hidden sm:block text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                Traveler Friend
-              </span>
-              <span className="hidden sm:block text-xs text-gray-500 font-medium">
-                Connect • Explore • Share
-              </span>
-            </div>
-          </Link>
+{/* LEFT – LOGO */}
+<Link to="/" className="flex items-center gap-3 group">
+  <div className="relative">
+    <img
+      src={logo}
+      alt="Travel Friend Logo"
+      className="w-12 h-12 lg:w-14 lg:h-14 object-contain rounded-xl shadow-md group-hover:scale-105 transition-transform duration-300"
+    />
+  </div>
+
+  <div>
+    <span className="hidden sm:block text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+      Travel-Friend
+    </span>
+    <span className="hidden sm:block text-xs text-gray-500 font-medium">
+      Connect • Explore • Share
+    </span>
+  </div>
+</Link>
 
           {/* CENTER – NAVIGATION */}
           {isAuthenticated && (

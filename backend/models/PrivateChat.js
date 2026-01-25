@@ -25,13 +25,25 @@ const privateChatSchema = new mongoose.Schema({
 // Ensure only 2 participants in private chat
 privateChatSchema.pre('save', function(next) {
   if (this.participants.length !== 2) {
-    next(new Error('Private chat must have exactly 2 participants'));
+    return next(new Error('Private chat must have exactly 2 participants'));
   }
+  
+  // Sort participants to ensure consistent ordering
+  this.participants.sort();
   next();
 });
 
-// Create compound index for participants
-privateChatSchema.index({ participants: 1 }, { unique: true });
+// Create compound unique index for participants (sorted)
+privateChatSchema.index({ participants: 1 }, { 
+  unique: true,
+  // Only apply uniqueness for arrays with exactly 2 participants
+  partialFilterExpression: {
+    $expr: { $eq: [{ $size: "$participants" }, 2] }
+  }
+});
+
+// Also add an index for finding chats by participant
+privateChatSchema.index({ 'participants': 1 });
 
 const PrivateChat = mongoose.model('PrivateChat', privateChatSchema);
 module.exports = PrivateChat;

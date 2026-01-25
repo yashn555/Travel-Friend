@@ -35,10 +35,10 @@ export const checkMutualFollow = async (userId) => {
   }
 };
 
-// Start or get private chat
-export const startPrivateChat = async (userId) => {
+// Start or get existing private chat - FIXED: Now exported
+export const startPrivateChat = async (otherUserId) => {
   try {
-    const response = await privateChatAPI.post('/', { userId });
+    const response = await privateChatAPI.post('/', { userId: otherUserId });
     return response.data;
   } catch (error) {
     console.error('Error starting private chat:', error);
