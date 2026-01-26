@@ -1,5 +1,38 @@
 import api from './api';
 
+export const getConnections = async (userId) => {
+  try {
+    console.log('👥 [InviteService] Getting connections for user:', userId);
+    
+    // Use your existing profile endpoints
+    const [followersRes, followingRes] = await Promise.all([
+      api.get(`/profile/followers`), // Adjust endpoint as needed
+      api.get(`/profile/following`)  // Adjust endpoint as needed
+    ]);
+    
+    const followers = followersRes.data?.data || followersRes.data || [];
+    const following = followingRes.data?.data || followingRes.data || [];
+    
+    // Combine and remove duplicates
+    const allConnections = [...followers, ...following];
+    const uniqueMap = new Map();
+    
+    allConnections.forEach(connection => {
+      if (connection._id && !uniqueMap.has(connection._id.toString())) {
+        uniqueMap.set(connection._id.toString(), connection);
+      }
+    });
+    
+    const uniqueConnections = Array.from(uniqueMap.values());
+    console.log(`✅ Found ${uniqueConnections.length} unique connections`);
+    
+    return uniqueConnections;
+  } catch (error) {
+    console.error('❌ [InviteService] Error getting connections:', error);
+    throw error;
+  }
+};
+
 // Fetch all groups for dashboard / browse
 export const fetchAllGroups = async () => {
   const response = await api.get('/groups/all-groups');
@@ -107,4 +140,78 @@ export const searchGroupsByLocation = async (lat, lng, radius) => {
     params: { lat, lng, radius }
   });
   return response.data.data;
+};
+
+// Invite friends to group
+export const inviteFriendsToGroup = async (groupId, data) => {
+  const token = localStorage.getItem('token');
+  const response = await axios.post(
+    `${API_URL}/groups/${groupId}/invite-friends`,
+    data,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  return response;
+};
+
+// Get group details
+export const getGroupDetails = async (groupId) => {
+  const token = localStorage.getItem('token');
+  const response = await axios.get(
+    `${API_URL}/groups/${groupId}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }
+  );
+  return response;
+};
+
+// Get group invitations
+export const getGroupInvitations = async (groupId) => {
+  const token = localStorage.getItem('token');
+  const response = await axios.get(
+    `${API_URL}/groups/${groupId}/invitations`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }
+  );
+  return response;
+};
+
+// Get my invitations
+export const getMyInvitations = async () => {
+  const token = localStorage.getItem('token');
+  const response = await axios.get(
+    `${API_URL}/groups/invitations/me`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }
+  );
+  return response;
+};
+
+// Respond to invitation
+export const respondToInvitation = async (invitationId, status) => {
+  const token = localStorage.getItem('token');
+  const response = await axios.put(
+    `${API_URL}/groups/invitations/${invitationId}/respond`,
+    { status },
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  return response;
 };

@@ -34,6 +34,12 @@ router.get('/:groupId/join-requests', groupController.getJoinRequests); // Alias
 router.put('/handle-request', groupController.handleJoinRequest);
 router.put('/:groupId/handle-request/:requestId', groupController.handleJoinRequest);
 
+// Group invitations
+router.post('/:groupId/invite-friends', groupController.inviteFriendsToGroup);
+router.get('/:groupId/invitations', groupController.getGroupInvitations);
+router.get('/invitations/me', groupController.getMyInvitations);
+router.put('/invitations/:invitationId/respond', groupController.respondToInvitation);
+
 // Debug/test routes (optional)
 router.get('/debug/test-requests/:groupId', groupController.getJoinRequestsByGroup);
 

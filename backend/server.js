@@ -18,6 +18,11 @@ const tripRoutes = require('./routes/tripRoutes');
 const userRoutes = require('./routes/userRoutes');
 const privateChatRoutes = require('./routes/privateChatRoutes'); // ADD THIS LINE
 const matchRoutes = require('./routes/matchRoutes');
+const inviteRoutes = require('./routes/inviteRoutes');
+const groupNotificationRoutes = require('./routes/groupNotificationRoutes');
+const userGroupRoutes = require('./routes/userGroupRoutes');
+const nearbyUsersRoutes = require('./routes/nearbyUsers');
+
 
 // Initialize express
 const app = express();
@@ -57,7 +62,10 @@ app.use('/api/trips', tripRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/private-chat', privateChatRoutes); // ADD THIS LINE
 app.use('/api/match', matchRoutes);
-
+app.use('/api/invite', inviteRoutes);
+app.use('/api/notifications/group', groupNotificationRoutes);
+app.use('/api/user-groups', userGroupRoutes);
+app.use('/api/nearby-users', nearbyUsersRoutes);
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({

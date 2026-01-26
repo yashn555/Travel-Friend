@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { sendOTPEmail } = require('./utils/emailService');
+const { sendOTPEmail } = require('../utils/emailService');
 
 async function testEmail() {
   console.log('\n🚀 ===== EMAIL TEST SCRIPT =====\n');

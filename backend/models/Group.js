@@ -1,6 +1,44 @@
 // backend/models/Group.js
 const mongoose = require('mongoose');
 
+// 🔥 UPDATED: Invitation Schema
+const invitationSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  invitedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  invitedAt: {
+    type: Date,
+    default: Date.now
+  },
+  message: {
+    type: String,
+    default: ''
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'accepted', 'declined', 'expired'],
+    default: 'pending'
+  },
+  respondedAt: {
+    type: Date
+  },
+  notificationSent: {
+    type: Boolean,
+    default: false
+  },
+  emailSent: {
+    type: Boolean,
+    default: false
+  }
+}, { _id: true }); // Ensure invitations have their own _id
+
 const GroupSchema = new mongoose.Schema({
   destination: {
     type: String,
@@ -255,6 +293,9 @@ const GroupSchema = new mongoose.Schema({
     }
   }],
   
+  // 🔥 UPDATED: Invitations using the new schema
+  invitations: [invitationSchema],
+
   // 🔥 NEW: Average Rating (Virtual)
   averageRating: {
     type: Number,
@@ -501,6 +542,74 @@ GroupSchema.methods.handleJoinRequest = function(requestId, action) {
   return false;
 };
 
+// 🔥 NEW: Add invitation method
+GroupSchema.methods.addInvitation = function(userId, invitedBy, message = '') {
+  // Check if invitation already exists and is pending
+  const existingInvitation = this.invitations.find(inv => 
+    inv.user.toString() === userId.toString() && inv.status === 'pending'
+  );
+  
+  // Check if user is already a member
+  const isMember = this.currentMembers.find(m => 
+    m.user.toString() === userId.toString() && m.status === 'approved'
+  );
+  
+  if (!existingInvitation && !isMember) {
+    this.invitations.push({
+      user: userId,
+      invitedBy: invitedBy,
+      message: message,
+      status: 'pending',
+      invitedAt: new Date(),
+      notificationSent: false,
+      emailSent: false
+    });
+    return true;
+  }
+  return false;
+};
+
+// 🔥 NEW: Handle invitation method
+GroupSchema.methods.handleInvitation = function(invitationId, action) {
+  const invitation = this.invitations.id(invitationId);
+  
+  if (!invitation || invitation.status !== 'pending') {
+    return false;
+  }
+  
+  if (action === 'accept') {
+    // Check if group is full
+    const approvedMembers = this.currentMembers.filter(m => m.status === 'approved');
+    if (approvedMembers.length >= this.maxMembers) {
+      return false;
+    }
+    
+    invitation.status = 'accepted';
+    invitation.respondedAt = new Date();
+    this.addMember(invitation.user);
+    return true;
+    
+  } else if (action === 'decline') {
+    invitation.status = 'declined';
+    invitation.respondedAt = new Date();
+    return true;
+  }
+  
+  return false;
+};
+
+// 🔥 NEW: Mark invitation as expired
+GroupSchema.methods.expireInvitation = function(invitationId) {
+  const invitation = this.invitations.id(invitationId);
+  
+  if (!invitation || invitation.status !== 'pending') {
+    return false;
+  }
+  
+  invitation.status = 'expired';
+  return true;
+};
+
 // Add this method to your GroupSchema methods:
 
 // 🔥 NEW: Auto-complete past trips
@@ -588,5 +697,9 @@ GroupSchema.index({ 'budget.min': 1, 'budget.max': 1 });
 // 🔥 NEW: Index for location-based search
 GroupSchema.index({ 'startingLocation.coordinates': '2dsphere' });
 GroupSchema.index({ 'destinationLocation.coordinates': '2dsphere' });
+// 🔥 NEW: Index for invitations
+GroupSchema.index({ 'invitations.user': 1 });
+GroupSchema.index({ 'invitations.status': 1 });
+GroupSchema.index({ 'invitations.invitedAt': 1 });
 
 module.exports = mongoose.model('Group', GroupSchema);

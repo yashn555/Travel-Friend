@@ -10,7 +10,7 @@ import {
 const THEME = {
   bgFrom: "#f2f0ed",   // yellow-300
   bgVia: "#eeedea",    // amber-400
-  bgTo: "#ebe7e5",     // orange-400
+  bgTo: "#b9b0ac",     // orange-400
 
   glowWhite: "rgba(235, 232, 232, 0.28)",
   glowYellow: "rgba(240, 239, 233, 0.35)",

@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { getMyGroups, deleteGroup } from '../../services/groupService';
+import { 
+  getMyGroups, 
+  deleteGroup, 
+  updateGroup,
+  getGroupById,
+  getPendingRequests,
+  handleJoinRequest
+} from '../../services/groupService';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
@@ -9,11 +16,15 @@ const MyGroupsPage = () => {
   const { user } = useSelector((state) => state.auth);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedGroup, setExpandedGroup] = useState(null);
+  const [membersData, setMembersData] = useState({});
+  const [requestsData, setRequestsData] = useState({});
+  const [loadingMembers, setLoadingMembers] = useState({});
+  const [loadingRequests, setLoadingRequests] = useState({});
 
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      
       const data = await getMyGroups();
       
       let allGroups = [];
@@ -25,7 +36,6 @@ const MyGroupsPage = () => {
         allGroups = data.data;
       }
       
-      // Filter groups where user is CREATOR only
       const userId = user?.id || user?._id;
       const createdGroups = allGroups.filter(group => {
         const creatorId = group.createdBy?._id || group.createdBy;
@@ -43,6 +53,55 @@ const MyGroupsPage = () => {
     }
   };
 
+  const fetchGroupMembers = async (groupId) => {
+    try {
+      setLoadingMembers(prev => ({ ...prev, [groupId]: true }));
+      const response = await getGroupById(groupId);
+      
+      // Extract members from group response
+      let members = [];
+      if (response.currentMembers) {
+        members = response.currentMembers;
+      } else if (response.group?.currentMembers) {
+        members = response.group.currentMembers;
+      } else if (response.data?.currentMembers) {
+        members = response.data.currentMembers;
+      }
+      
+      setMembersData(prev => ({ ...prev, [groupId]: members }));
+    } catch (error) {
+      console.error('Error fetching group details:', error);
+      toast.error('Failed to load group members');
+      setMembersData(prev => ({ ...prev, [groupId]: [] }));
+    } finally {
+      setLoadingMembers(prev => ({ ...prev, [groupId]: false }));
+    }
+  };
+
+  const fetchJoinRequests = async (groupId) => {
+    try {
+      setLoadingRequests(prev => ({ ...prev, [groupId]: true }));
+      const response = await getPendingRequests(groupId);
+      
+      let requests = [];
+      if (Array.isArray(response)) {
+        requests = response;
+      } else if (response && Array.isArray(response.requests)) {
+        requests = response.requests;
+      } else if (response && Array.isArray(response.data)) {
+        requests = response.data;
+      }
+      
+      setRequestsData(prev => ({ ...prev, [groupId]: requests }));
+    } catch (error) {
+      console.error('Error fetching join requests:', error);
+      toast.error('Failed to load join requests');
+      setRequestsData(prev => ({ ...prev, [groupId]: [] }));
+    } finally {
+      setLoadingRequests(prev => ({ ...prev, [groupId]: false }));
+    }
+  };
+
   useEffect(() => {
     if (user) {
       fetchGroups();
@@ -57,11 +116,137 @@ const MyGroupsPage = () => {
     try {
       await deleteGroup(groupId);
       toast.success(`Group "${groupName}" deleted successfully!`);
-      // Remove from local state
       setGroups(prev => prev.filter(g => g._id !== groupId));
+      if (expandedGroup === groupId) {
+        setExpandedGroup(null);
+      }
     } catch (error) {
       console.error('Error deleting group:', error);
       toast.error(error.response?.data?.message || 'Failed to delete group');
+    }
+  };
+
+  const handleToggleGroupStatus = async (groupId, currentStatus) => {
+    try {
+      const newStatus = !currentStatus;
+      await updateGroup(groupId, { isActive: newStatus });
+      toast.success(`Group ${newStatus ? 'activated' : 'deactivated'} successfully!`);
+      
+      setGroups(prev => prev.map(group => 
+        group._id === groupId ? { ...group, isActive: newStatus } : group
+      ));
+    } catch (error) {
+      console.error('Error updating group status:', error);
+      toast.error(error.response?.data?.message || 'Failed to update group status');
+    }
+  };
+
+  const handleRemoveMember = async (groupId, memberId, memberName) => {
+    if (!window.confirm(`Are you sure you want to remove "${memberName}" from the group?`)) {
+      return;
+    }
+
+    try {
+      // Use updateGroup to remove member
+      const group = groups.find(g => g._id === groupId);
+      if (!group) return;
+      
+      const updatedMembers = (group.currentMembers || []).filter(member => 
+        String(member._id || member.id || member.user?._id || member.user?.id) !== String(memberId)
+      );
+      
+      await updateGroup(groupId, { currentMembers: updatedMembers });
+      toast.success(`Member "${memberName}" removed successfully!`);
+      
+      // Update members data
+      setMembersData(prev => ({
+        ...prev,
+        [groupId]: prev[groupId]?.filter(member => 
+          String(member._id || member.id || member.user?._id || member.user?.id) !== String(memberId)
+        ) || []
+      }));
+      
+      // Update groups list
+      setGroups(prev => prev.map(g => 
+        g._id === groupId 
+          ? { ...g, currentMembers: updatedMembers }
+          : g
+      ));
+    } catch (error) {
+      console.error('Error removing member:', error);
+      toast.error(error.response?.data?.message || 'Failed to remove member');
+    }
+  };
+
+  const handleApproveRequest = async (groupId, requestId, userName) => {
+    try {
+      // Use handleJoinRequest to approve
+      await handleJoinRequest(groupId, requestId, 'approved');
+      toast.success(`Join request from "${userName}" approved!`);
+      
+      // Update requests data
+      setRequestsData(prev => ({
+        ...prev,
+        [groupId]: prev[groupId]?.filter(req => req._id !== requestId) || []
+      }));
+      
+      // Update group data
+      setGroups(prev => prev.map(group => 
+        group._id === groupId 
+          ? { 
+              ...group, 
+              joinRequests: group.joinRequests?.filter(req => req._id !== requestId) || [],
+              currentMembers: [...(group.currentMembers || []), { _id: requestId }] // Add placeholder
+            } 
+          : group
+      ));
+    } catch (error) {
+      console.error('Error approving request:', error);
+      toast.error(error.response?.data?.message || 'Failed to approve request');
+    }
+  };
+
+  const handleRejectRequest = async (groupId, requestId, userName) => {
+    if (!window.confirm(`Reject join request from "${userName}"?`)) {
+      return;
+    }
+
+    try {
+      // Use handleJoinRequest to reject
+      await handleJoinRequest(groupId, requestId, 'rejected');
+      toast.success(`Join request from "${userName}" rejected!`);
+      
+      // Update requests data
+      setRequestsData(prev => ({
+        ...prev,
+        [groupId]: prev[groupId]?.filter(req => req._id !== requestId) || []
+      }));
+      
+      // Update group data
+      setGroups(prev => prev.map(group => 
+        group._id === groupId 
+          ? { 
+              ...group, 
+              joinRequests: group.joinRequests?.filter(req => req._id !== requestId) || []
+            } 
+          : group
+      ));
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      toast.error(error.response?.data?.message || 'Failed to reject request');
+    }
+  };
+
+  const toggleGroupExpansion = async (groupId) => {
+    if (expandedGroup === groupId) {
+      setExpandedGroup(null);
+    } else {
+      setExpandedGroup(groupId);
+      // Fetch detailed data when expanding
+      await Promise.all([
+        fetchGroupMembers(groupId),
+        fetchJoinRequests(groupId)
+      ]);
     }
   };
 
@@ -77,18 +262,32 @@ const MyGroupsPage = () => {
   }
 
   return (
-    <div className="p-5 max-w-6xl mx-auto">
+    <div className="p-5 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">My Created Groups</h1>
           <p className="text-gray-600 mt-2">Manage all groups you've created</p>
         </div>
-        <Link 
-          to="/create-trip" 
-          className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition duration-200"
-        >
-          Create New Trip
-        </Link>
+        <div className="flex gap-4">
+          <Link 
+            to="/groups" 
+            className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-5 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Browse All Groups
+          </Link>
+          <Link 
+            to="/create-trip" 
+            className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Create New Trip
+          </Link>
+        </div>
       </div>
       
       {groups.length === 0 ? (
@@ -121,114 +320,385 @@ const MyGroupsPage = () => {
         </div>
       ) : (
         <>
-          <div className="mb-6">
-            <p className="text-gray-600">
-              Showing <span className="font-bold text-blue-600">{groups.length}</span> group{groups.length !== 1 ? 's' : ''} created by you
-            </p>
+          <div className="mb-6 bg-blue-50 border border-blue-100 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-blue-700">
+                You have created <span className="font-bold">{groups.length}</span> group{groups.length !== 1 ? 's' : ''}. 
+                Click on any group to manage members, requests, and settings.
+              </p>
+            </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             {groups.map(group => {
               const memberCount = group.currentMembers?.length || 0;
               const pendingRequests = group.joinRequests?.length || 0;
+              const isExpanded = expandedGroup === group._id;
+              const members = membersData[group._id] || [];
+              const requests = requestsData[group._id] || [];
               
               return (
-                <div key={group._id} className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 border border-gray-100 overflow-hidden">
-                  <div className="p-6">
+                <div key={group._id} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden transition-all duration-300 hover:shadow-lg">
+                  <div 
+                    className="p-6 cursor-pointer"
+                    onClick={() => toggleGroupExpansion(group._id)}
+                  >
                     <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-800 truncate">{group.destination}</h3>
-                        <p className="text-sm text-gray-500 mt-1">
-                          Created on {new Date(group.createdAt).toLocaleDateString()}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-xl font-bold text-gray-800">{group.destination}</h3>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${group.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                            {group.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                          <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1 rounded-full">
+                            Creator
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          Created on {new Date(group.createdAt).toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}
                         </p>
                       </div>
-                      <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1 rounded-full">
-                        Creator
-                      </span>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleGroupExpansion(group._id);
+                        }}
+                        className="ml-4 p-2 hover:bg-gray-100 rounded-lg transition duration-200"
+                      >
+                        <svg 
+                          className={`w-6 h-6 text-gray-600 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
                     </div>
                     
-                    <p className="text-gray-600 mb-4 line-clamp-3 min-h-[4rem]">{group.description}</p>
-                    
-                    <div className="space-y-3 mb-6">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Trip Dates:</span>
-                        <span className="font-medium">
-                          {new Date(group.startDate).toLocaleDateString()} - {new Date(group.endDate).toLocaleDateString()}
-                        </span>
-                      </div>
-                      
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Members:</span>
-                        <span className="font-medium">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5 0c-.281.023-.563.045-.844.064A23.91 23.91 0 0112 14.25a23.91 23.91 0 01-7.656-1.186A48.275 48.275 0 012.25 12c0-.725.131-1.418.344-2.061.281-.019.563-.041.844-.064m13.5 0a48.67 48.67 0 00-7.5 0" />
+                          </svg>
+                          <span className="font-medium text-blue-800">Members</span>
+                        </div>
+                        <p className="text-2xl font-bold text-blue-600 mt-2">
                           {memberCount}/{group.maxMembers || 10}
-                        </span>
+                        </p>
                       </div>
                       
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Status:</span>
-                        <span className={`font-medium ${group.isActive ? 'text-green-600' : 'text-gray-600'}`}>
-                          {group.isActive ? 'Active' : 'Inactive'}
-                        </span>
+                      <div className="bg-yellow-50 p-4 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="font-medium text-yellow-800">Pending Requests</span>
+                        </div>
+                        <p className="text-2xl font-bold text-yellow-600 mt-2">
+                          {pendingRequests}
+                        </p>
                       </div>
                       
-                      {pendingRequests > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Pending Requests:</span>
-                          <span className="font-medium text-yellow-600">
-                            {pendingRequests} pending
-                          </span>
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="font-medium text-green-800">Trip Dates</span>
                         </div>
-                      )}
-                      
-                      {group.budget?.min && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Budget:</span>
-                          <span className="font-medium">
-                            {group.budget.min} - {group.budget.max} {group.budget.currency}
-                          </span>
-                        </div>
-                      )}
+                        <p className="text-sm font-medium text-green-700 mt-2">
+                          {new Date(group.startDate).toLocaleDateString()} - {new Date(group.endDate).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
                     
-                    <div className="flex flex-col gap-2">
-                      <div className="flex gap-2">
+                    <p className="text-gray-600 mb-4">{group.description}</p>
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {group.budget?.min && (
+                        <span className="bg-gray-100 text-gray-800 text-xs font-medium px-3 py-1 rounded-full">
+                          Budget: {group.budget.min} - {group.budget.max} {group.budget.currency}
+                        </span>
+                      )}
+                      {group.interests?.map((interest, index) => (
+                        <span key={index} className="bg-blue-100 text-blue-800 text-xs font-medium px-3 py-1 rounded-full">
+                          {interest}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Expanded Management Panel */}
+                  {isExpanded && (
+                    <div className="border-t border-gray-200 bg-gray-50 p-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Members Management */}
+                        <div className="bg-white rounded-lg border border-gray-200 p-5">
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-semibold text-gray-800">Group Members</h4>
+                            <span className="text-sm text-gray-500">
+                              {loadingMembers[group._id] ? 'Loading...' : `${members.length} members`}
+                            </span>
+                          </div>
+                          
+                          {loadingMembers[group._id] ? (
+                            <div className="text-center py-4">
+                              <div className="inline-block animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                              <p className="mt-2 text-sm text-gray-500">Loading members...</p>
+                            </div>
+                          ) : members.length > 0 ? (
+                            <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                              {members.map((member, index) => {
+                                const memberUser = member.user || member;
+                                const memberId = memberUser._id || memberUser.id || member._id || member.id;
+                                const isCreator = String(memberId) === String(user?.id || user?._id);
+                                
+                                return (
+                                  <div key={memberId || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <span className="font-semibold text-blue-600">
+                                          {memberUser.name?.[0]?.toUpperCase() || memberUser.email?.[0]?.toUpperCase() || 'U'}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <p className="font-medium text-gray-800">
+                                          {memberUser.name || memberUser.email || 'Unknown User'}
+                                          {isCreator && <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Creator</span>}
+                                        </p>
+                                        <p className="text-sm text-gray-500">{memberUser.email || ''}</p>
+                                      </div>
+                                    </div>
+                                    {!isCreator && (
+                                      <button
+                                        onClick={() => handleRemoveMember(
+                                          group._id, 
+                                          memberId,
+                                          memberUser.name || memberUser.email || 'this member'
+                                        )}
+                                        className="text-red-600 hover:text-red-800 p-2 transition duration-200"
+                                        title="Remove member"
+                                      >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-500">
+                              <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5 0c-.281.023-.563.045-.844.064A23.91 23.91 0 0112 14.25a23.91 23.91 0 01-7.656-1.186A48.275 48.275 0 012.25 12c0-.725.131-1.418.344-2.061.281-.019.563-.041.844-.064m13.5 0a48.67 48.67 0 00-7.5 0" />
+                              </svg>
+                              <p>No members yet</p>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Join Requests Management */}
+                        <div className="bg-white rounded-lg border border-gray-200 p-5">
+                          <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-semibold text-gray-800">Join Requests</h4>
+                            <span className="text-sm text-gray-500">
+                              {loadingRequests[group._id] ? 'Loading...' : `${requests.length} pending`}
+                            </span>
+                          </div>
+                          
+                          {loadingRequests[group._id] ? (
+                            <div className="text-center py-4">
+                              <div className="inline-block animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                              <p className="mt-2 text-sm text-gray-500">Loading requests...</p>
+                            </div>
+                          ) : requests.length > 0 ? (
+                            <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                              {requests.map((request, index) => {
+                                const requester = request.user || request;
+                                const requestId = request._id || index;
+                                
+                                return (
+                                  <div key={requestId} className="p-3 bg-yellow-50 rounded-lg border border-yellow-100">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                                          <span className="font-semibold text-yellow-600 text-sm">
+                                            {requester.name?.[0]?.toUpperCase() || requester.email?.[0]?.toUpperCase() || 'U'}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <p className="font-medium text-gray-800">{requester.name || requester.email || 'Unknown User'}</p>
+                                          <p className="text-xs text-gray-500">
+                                            {request.createdAt || request.requestedAt 
+                                              ? `Requested on ${new Date(request.createdAt || request.requestedAt).toLocaleDateString()}`
+                                              : 'Pending request'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() => handleApproveRequest(
+                                            group._id, 
+                                            requestId,
+                                            requester.name || requester.email || 'User'
+                                          )}
+                                          className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-medium transition duration-200"
+                                          title="Approve"
+                                        >
+                                          Approve
+                                        </button>
+                                        <button
+                                          onClick={() => handleRejectRequest(
+                                            group._id, 
+                                            requestId,
+                                            requester.name || requester.email || 'User'
+                                          )}
+                                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition duration-200"
+                                          title="Reject"
+                                        >
+                                          Reject
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {request.message && (
+                                      <p className="text-sm text-gray-600 bg-white p-2 rounded mt-2">
+                                        "{request.message}"
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-500">
+                              <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <p>No pending requests</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Action Buttons */}
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <div className="flex flex-wrap gap-3">
+                          <Link
+                            to={`/groups/${group._id}`}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            View Details
+                          </Link>
+                          
+                          <Link
+                            to={`/groups/${group._id}/chat`}
+                            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            Group Chat
+                          </Link>
+                          
+                          <button
+                            onClick={() => navigate(`/edit-group/${group._id}`)}
+                            className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit Group
+                          </button>
+                          
+                          <button
+                            onClick={() => handleToggleGroupStatus(group._id, group.isActive)}
+                            className={`px-4 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2 ${
+                              group.isActive 
+                                ? 'bg-yellow-500 hover:bg-yellow-600 text-white' 
+                                : 'bg-green-500 hover:bg-green-600 text-white'
+                            }`}
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            {group.isActive ? 'Deactivate Group' : 'Activate Group'}
+                          </button>
+                          
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteGroup(group._id, group.destination);
+                            }}
+                            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete Group
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Quick Actions (when not expanded) */}
+                  {!isExpanded && (
+                    <div className="border-t border-gray-200 p-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => toggleGroupExpansion(group._id)}
+                          className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                          </svg>
+                          Manage
+                        </button>
                         <Link
                           to={`/groups/${group._id}`}
-                          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-center px-4 py-2.5 rounded-lg font-medium transition duration-200"
+                          className="bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm"
                         >
-                          View Details
+                          View
                         </Link>
                         <Link
                           to={`/groups/${group._id}/chat`}
-                          className="flex-1 bg-green-500 hover:bg-green-600 text-white text-center px-4 py-2.5 rounded-lg font-medium transition duration-200"
+                          className="bg-green-100 hover:bg-green-200 text-green-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm"
                         >
-                          Group Chat
-                        </Link>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <Link
-                          to={`/group-requests?group=${group._id}`}
-                          className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white text-center px-4 py-2.5 rounded-lg font-medium transition duration-200"
-                        >
-                          Requests ({pendingRequests})
+                          Chat
                         </Link>
                         <button
                           onClick={() => navigate(`/edit-group/${group._id}`)}
-                          className="flex-1 bg-purple-500 hover:bg-purple-600 text-white text-center px-4 py-2.5 rounded-lg font-medium transition duration-200"
+                          className="bg-purple-100 hover:bg-purple-200 text-purple-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm"
                         >
                           Edit
                         </button>
+                        {pendingRequests > 0 && (
+                          <button
+                            onClick={() => toggleGroupExpansion(group._id)}
+                            className="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm flex items-center gap-1"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                            {pendingRequests} Requests
+                          </button>
+                        )}
                       </div>
-                      
-                      <button
-                        onClick={() => handleDeleteGroup(group._id, group.destination)}
-                        className="w-full bg-red-500 hover:bg-red-600 text-white text-center px-4 py-2.5 rounded-lg font-medium transition duration-200"
-                      >
-                        Delete Group
-                      </button>
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}

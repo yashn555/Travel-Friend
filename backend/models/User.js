@@ -66,7 +66,23 @@ const UserSchema = new mongoose.Schema({
     default: ''
   },
   
-  // Location Details
+  // ==================== LOCATION FIELD FOR NEARBY USERS ====================
+  location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      default: null
+    },
+    city: String,
+    country: String,
+    lastUpdated: Date
+  },
+  
+  // Town/City/State details (for display purposes)
   town: {
     type: String,
     trim: true,
@@ -91,7 +107,7 @@ const UserSchema = new mongoose.Schema({
     default: 'India'
   },
   
-  // Personal Details - FIXED: dateOfBirth field added
+  // Personal Details
   dateOfBirth: {
     type: Date,
     default: null
@@ -101,6 +117,12 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ['male', 'female', 'other', 'prefer-not-to-say'],
     default: 'prefer-not-to-say'
+  },
+  
+  // ==================== INTERESTS FOR NEARBY USERS FILTERING ====================
+  interests: {
+    type: [String],
+    default: []
   },
   
   // Social Features
@@ -229,7 +251,7 @@ const UserSchema = new mongoose.Schema({
     }
   }],
   
-  // User Stats - FIXED: Ensure all stats fields exist
+  // User Stats
   stats: {
     tripsCount: { type: Number, default: 0 },
     friendsCount: { type: Number, default: 0 },
@@ -237,6 +259,12 @@ const UserSchema = new mongoose.Schema({
     followingCount: { type: Number, default: 0 },
     totalDistance: { type: Number, default: 0 },
     countriesVisited: { type: Number, default: 0 }
+  },
+  
+  // ==================== LAST ACTIVE FOR ONLINE STATUS ====================
+  lastActive: {
+    type: Date,
+    default: Date.now
   },
   
   isAnonymous: {
@@ -312,6 +340,12 @@ const UserSchema = new mongoose.Schema({
       type: String,
       enum: ['public', 'friends', 'private'],
       default: 'friends'
+    },
+    // ==================== PRIVACY FOR LOCATION ====================
+    showLocationTo: {
+      type: String,
+      enum: ['public', 'friends', 'private'],
+      default: 'friends'
     }
   },
   
@@ -366,6 +400,12 @@ UserSchema.virtual('mutualFriendsCount').get(function() {
   return 0;
 });
 
+// ==================== NEW VIRTUAL FOR ONLINE STATUS ====================
+UserSchema.virtual('isOnline').get(function() {
+  const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+  return this.lastActive >= fifteenMinutesAgo;
+});
+
 // Encrypt password before saving
 UserSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
@@ -393,9 +433,144 @@ UserSchema.pre('save', function(next) {
   next();
 });
 
+// ==================== NEW PRE-SAVE HOOK FOR LOCATION ====================
+UserSchema.pre('save', function(next) {
+  // Update lastActive when location is updated
+  if (this.isModified('location')) {
+    this.location.lastUpdated = new Date();
+    this.lastActive = new Date();
+  }
+  
+  // Update lastActive on any save (for online status)
+  if (!this.isModified('lastActive')) {
+    this.lastActive = new Date();
+  }
+  
+  next();
+});
+
 // Compare password method
 UserSchema.methods.comparePassword = async function(enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// ==================== NEW METHOD FOR LOCATION UPDATE ====================
+UserSchema.methods.updateLocation = async function(latitude, longitude, city, country) {
+  if (!latitude || !longitude) {
+    throw new Error('Latitude and longitude are required');
+  }
+  
+  this.location = {
+    type: 'Point',
+    coordinates: [longitude, latitude], // MongoDB GeoJSON format
+    city: city || this.location?.city || '',
+    country: country || this.location?.country || '',
+    lastUpdated: new Date()
+  };
+  
+  this.lastActive = new Date();
+  
+  // Update city/country fields for backward compatibility
+  if (city) this.city = city;
+  if (country) this.country = country;
+  
+  return this.save();
+};
+
+// ==================== NEW METHOD FOR GETTING NEARBY USERS ====================
+UserSchema.statics.findNearbyUsers = async function(userId, maxDistance = 50, filters = {}) {
+  const currentUser = await this.findById(userId);
+  
+  if (!currentUser.location || !currentUser.location.coordinates) {
+    throw new Error('Current user location not found');
+  }
+  
+  const [longitude, latitude] = currentUser.location.coordinates;
+  
+  const query = {
+    _id: { $ne: currentUser._id },
+    'location.coordinates': { $exists: true },
+    'location.coordinates.0': { $exists: true },
+    'location.coordinates.1': { $exists: true }
+  };
+  
+  // Apply privacy settings filter
+  query.$or = [
+    { 'privacySettings.showLocationTo': 'public' },
+    { 
+      'privacySettings.showLocationTo': 'friends',
+      'friends.user': currentUser._id,
+      'friends.status': 'accepted'
+    },
+    { _id: currentUser._id }
+  ];
+  
+  // Apply interests filter
+  if (filters.interests && filters.interests.length > 0) {
+    query.interests = { $in: filters.interests };
+  }
+  
+  // Apply online status filter
+  if (filters.showOnlineOnly) {
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+    query.lastActive = { $gte: fifteenMinutesAgo };
+  }
+  
+  const nearbyUsers = await this.aggregate([
+    {
+      $geoNear: {
+        near: { 
+          type: 'Point', 
+          coordinates: [longitude, latitude] 
+        },
+        distanceField: 'distance',
+        spherical: true,
+        maxDistance: maxDistance * 1000, // Convert km to meters
+        query: query
+      }
+    },
+    {
+      $addFields: {
+        distance: { $divide: ['$distance', 1000] }, // Convert meters to km
+        isOnline: {
+          $cond: {
+            if: { $gte: ['$lastActive', new Date(Date.now() - 15 * 60 * 1000)] },
+            then: true,
+            else: false
+          }
+        },
+        mutualInterests: {
+          $size: {
+            $setIntersection: [
+              { $ifNull: [currentUser.interests, []] },
+              { $ifNull: ['$interests', []] }
+            ]
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        password: 0,
+        otp: 0,
+        notifications: 0,
+        friendRequests: 0,
+        'friends.message': 0,
+        'followers.followedAt': 0,
+        'following.followedAt': 0
+      }
+    },
+    {
+      $sort: filters.sortBy === 'distance' ? 
+        { distance: 1 } : 
+        { mutualInterests: -1 }
+    },
+    {
+      $limit: filters.limit || 50
+    }
+  ]);
+  
+  return nearbyUsers;
 };
 
 // Follow a user
@@ -537,7 +712,7 @@ UserSchema.methods.addNotification = function(type, title, message, from = null,
   }
 };
 
-// Update stats method - FIXED: Make it actually update stats
+// Update stats method
 UserSchema.methods.updateStats = function() {
   this.stats = {
     tripsCount: this.pastTrips ? this.pastTrips.length : 0,
@@ -548,8 +723,6 @@ UserSchema.methods.updateStats = function() {
     countriesVisited: this.pastTrips ? [...new Set(this.pastTrips.map(trip => trip.country).filter(Boolean))].length : 0
   };
 };
-// ==================== NEW METHODS FOR FOLLOW SYSTEM ====================
-// (Add these to the UserSchema methods section)
 
 // Check if user follows another user
 UserSchema.methods.isFollowing = function(userId) {
@@ -577,8 +750,16 @@ UserSchema.methods.getFollowerIds = function() {
     .filter(f => f.user)
     .map(f => f.user.toString());
 };
-// ==================== END OF NEW METHODS ====================
 
+// ==================== NEW METHOD FOR GETTING MUTUAL INTERESTS ====================
+UserSchema.methods.getMutualInterests = function(otherUser) {
+  const userInterests = this.interests || [];
+  const otherInterests = otherUser.interests || [];
+  
+  return userInterests.filter(interest => 
+    otherInterests.includes(interest)
+  );
+};
 
 // Indexes for better performance
 UserSchema.index({ name: 'text', bio: 'text', city: 'text', state: 'text' });
@@ -591,5 +772,10 @@ UserSchema.index({ 'pastTrips.destination': 1 });
 UserSchema.index({ 'travelPreferences': 1 });
 UserSchema.index({ rating: -1 });
 UserSchema.index({ createdAt: -1 });
+UserSchema.index({ lastActive: -1 });
+UserSchema.index({ interests: 1 });
+
+// ==================== 2DSPHERE INDEX FOR GEO SPATIAL QUERIES ====================
+UserSchema.index({ 'location.coordinates': '2dsphere' });
 
 module.exports = mongoose.model('User', UserSchema);

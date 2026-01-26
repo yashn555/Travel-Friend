@@ -1558,3 +1558,316 @@ exports.getGroupStartingCity = async (req, res) => {
     });
   }
 };
+
+// @desc    Invite friends to a group
+// @route   POST /api/groups/:groupId/invite-friends
+// @access  Private
+exports.inviteFriendsToGroup = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { friendIds, message } = req.body;
+    const userId = req.user._id;
+
+    // Validate input
+    if (!friendIds || !Array.isArray(friendIds) || friendIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide at least one friend ID'
+      });
+    }
+
+    // Check if group exists and user is the creator
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if user is group admin/creator
+    if (group.createdBy.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group creator can invite friends'
+      });
+    }
+
+    // Check if group is already full
+    if (group.members.length >= group.maxMembers) {
+      return res.status(400).json({
+        success: false,
+        message: 'Group is already full'
+      });
+    }
+
+    const invitations = [];
+    const errors = [];
+    const invitedCount = 0;
+
+    // Send invitations to each friend
+    for (const friendId of friendIds) {
+      try {
+        // Check if friend exists
+        const friend = await User.findById(friendId);
+        if (!friend) {
+          errors.push(`User ${friendId} not found`);
+          continue;
+        }
+
+        // Check if friend is already a member
+        if (group.members.some(member => member.toString() === friendId)) {
+          errors.push(`${friend.name} is already a member`);
+          continue;
+        }
+
+        // Check if there's already a pending invitation
+        const existingInvitation = await GroupInvitation.findOne({
+          group: groupId,
+          invitee: friendId,
+          status: 'pending'
+        });
+
+        if (existingInvitation) {
+          errors.push(`You already sent an invitation to ${friend.name}`);
+          continue;
+        }
+
+        // Create invitation
+        const invitation = new GroupInvitation({
+          group: groupId,
+          inviter: userId,
+          invitee: friendId,
+          message: message || `Hey! I'm going to ${group.destination}. Want to join me?`,
+          status: 'pending'
+        });
+
+        await invitation.save();
+
+        // Add invitation reference to group
+        group.invitations.push(invitation._id);
+        
+        // Create notification for friend
+        const notification = new Notification({
+          user: friendId,
+          type: 'group_invitation',
+          title: 'Trip Invitation ✈️',
+          message: `${req.user.name} invited you to join their trip to ${group.destination}`,
+          data: {
+            groupId: group._id,
+            groupName: group.destination,
+            invitationId: invitation._id,
+            inviterId: userId,
+            inviterName: req.user.name
+          }
+        });
+
+        await notification.save();
+
+        invitations.push(invitation);
+        invitedCount++;
+      } catch (error) {
+        console.error(`Error inviting friend ${friendId}:`, error);
+        errors.push(`Failed to invite user ${friendId}`);
+      }
+    }
+
+    // Save group with updated invitations
+    await group.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Invitations sent successfully`,
+      invitedCount,
+      invitations,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    console.error('Error inviting friends to group:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get invitations for a specific group
+// @route   GET /api/groups/:groupId/invitations
+// @access  Private
+exports.getGroupInvitations = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const userId = req.user._id;
+
+    // Check if group exists
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+
+    // Check if user is group admin/creator
+    if (group.createdBy.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only group creator can view invitations'
+      });
+    }
+
+    // Get invitations for this group
+    const invitations = await GroupInvitation.find({ group: groupId })
+      .populate('invitee', 'name username profilePicture')
+      .populate('inviter', 'name username profilePicture')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: invitations.length,
+      invitations
+    });
+  } catch (error) {
+    console.error('Error getting group invitations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get my invitations
+// @route   GET /api/groups/invitations/me
+// @access  Private
+exports.getMyInvitations = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Get invitations sent to me
+    const invitations = await GroupInvitation.find({ 
+      invitee: userId,
+      status: 'pending'
+    })
+      .populate('group', 'destination description startDate endDate members maxMembers')
+      .populate('inviter', 'name username profilePicture')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: invitations.length,
+      invitations
+    });
+  } catch (error) {
+    console.error('Error getting my invitations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Respond to an invitation
+// @route   PUT /api/groups/invitations/:invitationId/respond
+// @access  Private
+exports.respondToInvitation = async (req, res) => {
+  try {
+    const { invitationId } = req.params;
+    const { status } = req.body;
+    const userId = req.user._id;
+
+    // Validate status
+    if (!['accepted', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be "accepted" or "rejected"'
+      });
+    }
+
+    // Find invitation
+    const invitation = await GroupInvitation.findById(invitationId)
+      .populate('group')
+      .populate('inviter', 'name username');
+
+    if (!invitation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invitation not found'
+      });
+    }
+
+    // Check if user is the invitee
+    if (invitation.invitee.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized to respond to this invitation'
+      });
+    }
+
+    // Check if invitation is still pending
+    if (invitation.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `Invitation already ${invitation.status}`
+      });
+    }
+
+    // Check if group still exists
+    const group = await Group.findById(invitation.group._id);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group no longer exists'
+      });
+    }
+
+    // Check if group is full
+    if (group.members.length >= group.maxMembers) {
+      return res.status(400).json({
+        success: false,
+        message: 'Group is already full'
+      });
+    }
+
+    // Update invitation status
+    invitation.status = status;
+    invitation.respondedAt = new Date();
+    await invitation.save();
+
+    if (status === 'accepted') {
+      // Add user to group members
+      group.members.push(userId);
+      await group.save();
+
+      // Create notification for inviter
+      const notification = new Notification({
+        user: invitation.inviter._id,
+        type: 'group_invitation',
+        title: 'Invitation Accepted ✅',
+        message: `${req.user.name} accepted your invitation to join ${group.destination}`,
+        data: {
+          groupId: group._id,
+          userId: userId,
+          userName: req.user.name
+        }
+      });
+
+      await notification.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Invitation ${status}`,
+      invitation
+    });
+  } catch (error) {
+    console.error('Error responding to invitation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};

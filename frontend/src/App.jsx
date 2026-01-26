@@ -1,4 +1,4 @@
-// frontend/src/App.jsx - Update the imports and routes
+// frontend/src/App.jsx
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -10,7 +10,7 @@ import LoginPage from './pages/auth/LoginPage';
 import VerifyOTPPage from './pages/auth/VerifyOTPPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
-import UserProfilePage from './pages/UserProfilePage'; // This should exist based on your earlier code
+import UserProfilePage from './pages/UserProfilePage';
 import CreateTripPage from './pages/trips/CreateTripPage';
 import GroupListPage from './pages/groups/GroupListPage';
 import GroupDetailsPage from './pages/groups/GroupDetailsPage';
@@ -22,9 +22,19 @@ import NotificationsPage from './pages/notifications/NotificationsPage';
 import EditGroupPage from './pages/groups/EditGroupPage';
 import PrivateChatList from './pages/private-chat/PrivateChatList';
 import PrivateChatRoom from './pages/private-chat/PrivateChatRoom';
-import FindFriendsPage from './pages/FindFriendsPage'; // Added import
+import FindFriendsPage from './pages/FindFriendsPage';
 import MatchPage from './pages/Match/MatchPage';
 import SimpleAboutPage from './pages/SimpleAboutPage';
+import InvitesPage from './pages/invites/InvitesPage';
+import InvitationDetails from './pages/invitations/InvitationDetails';
+import NearbyUsersPage from './pages/nearby/NearbyUsersPage';
+
+
+
+// ✅ CORRECT IMPORTS - Fix the typo
+import InviteFriendsToTrip from './pages/trips/InviteFriendsToTrip';
+import InvitationResponse from './pages/invitations/InvitationResponse';
+
 // Components
 import Header from './components/layout/Header';
 
@@ -56,30 +66,59 @@ function App() {
             {/* Protected */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-             <Route path="/about" element={<SimpleAboutPage />} />
-            
+            <Route path="/about" element={<SimpleAboutPage />} />
+
+            {/* Invite Friends */}
+            <Route
+              path="/groups/:Id/invite-friends"
+              element={
+                <ProtectedRoute>
+                  <InviteFriendsToTrip />
+                </ProtectedRoute>
+              }
+            />
+
             {/* User Profile */}
             <Route path="/user/:userId" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
-            
-            {/* Find Friends Page - ADD THIS LINE */}
+
             <Route path="/find-friends" element={<ProtectedRoute><FindFriendsPage /></ProtectedRoute>} />
-            
             <Route path="/create-trip" element={<ProtectedRoute><CreateTripPage /></ProtectedRoute>} />
             <Route path="/groups" element={<ProtectedRoute><GroupListPage /></ProtectedRoute>} />
             <Route path="/groups/:id" element={<ProtectedRoute><GroupDetailsPage /></ProtectedRoute>} />
             <Route path="/groups/:id/chat" element={<ProtectedRoute><GroupChatPage /></ProtectedRoute>} />
             <Route path="/my-groups" element={<ProtectedRoute><MyGroupsPage /></ProtectedRoute>} />
             <Route path="/group-requests" element={<ProtectedRoute><GroupRequests /></ProtectedRoute>} />
-            
+
             {/* Chat Routes */}
             <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
             <Route path="/private-chat" element={<ProtectedRoute><PrivateChatList /></ProtectedRoute>} />
             <Route path="/private-chat/:chatId" element={<ProtectedRoute><PrivateChatRoom /></ProtectedRoute>} />
-            
+
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
             <Route path="/edit-group/:id" element={<ProtectedRoute><EditGroupPage /></ProtectedRoute>} />
             
-            {/* Match Routes */}
+            <Route path="/nearby-users" element={<ProtectedRoute><NearbyUsersPage /></ProtectedRoute>} />
+
+            {/* ✅ FIX THIS ROUTE: Use InvitationResponse, not InvitationResponsePage */}
+            <Route 
+  path="/invites" 
+  element={
+    <ProtectedRoute>
+      <InvitesPage />
+    </ProtectedRoute>
+  } 
+/>
+
+<Route 
+  path="/invitations/:invitationId/respond" 
+  element={
+    <ProtectedRoute>
+      <InvitationDetails />
+    </ProtectedRoute>
+  } 
+/>
+
+            {/* Match */}
             <Route path="/match-travelers" element={<MatchPage />} />
 
             {/* Default */}

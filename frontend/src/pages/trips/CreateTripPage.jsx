@@ -1,5 +1,5 @@
 // frontend/src/pages/trips/CreateTripPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createGroup } from '../../services/groupService';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -15,7 +15,9 @@ import {
   FaVenusMars,
   FaExclamationCircle,
   FaCheckCircle,
-  FaLocationArrow
+  FaLocationArrow,
+  FaUserFriends,
+  FaRupeeSign
 } from 'react-icons/fa';
 import LocationPicker from '../../components/location/LocationPicker';
 import useGeoLocation from '../../hooks/useGeoLocation';
@@ -33,9 +35,9 @@ const CreateTripPage = () => {
     startDate: '',
     endDate: '',
     
-    // Budget
-    minBudget: '',
-    maxBudget: '',
+    // Budget (Updated with slider values)
+    minBudget: '5000',
+    maxBudget: '20000',
     currency: 'INR',
     
     // Group Settings
@@ -56,13 +58,20 @@ const CreateTripPage = () => {
     
     // Interests & Activities
     interests: [],
-    tags: ''
+    tags: '',
+    
+    // New field for friend invitations
+    inviteFriendsAfterCreate: false
   });
   
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState({});
+  const [createdGroupId, setCreatedGroupId] = useState(null);
+  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [confirmationChecked, setConfirmationChecked] = useState(false);
+  const formRef = useRef(null);
   
   // Get user's current location
   const { location: userLocation, error: locationError, getLocation } = useGeoLocation();
@@ -103,8 +112,16 @@ const CreateTripPage = () => {
     { id: 'mountains', label: 'Mountains', icon: '🏔️' }
   ];
 
+  const budgetPresets = [
+    { label: 'Budget', min: 1000, max: 5000, icon: '💰' },
+    { label: 'Moderate', min: 5000, max: 20000, icon: '⭐' },
+    { label: 'Luxury', min: 20000, max: 50000, icon: '🎩' },
+    { label: 'Premium', min: 50000, max: 100000, icon: '👑' }
+  ];
+
   // Auto-detect user's location on component mount
   useEffect(() => {
+    console.log('📍 CreateTripPage mounted');
     getLocation();
   }, []);
 
@@ -122,11 +139,77 @@ const CreateTripPage = () => {
     }
   }, [userLocation]);
 
+  // Add useEffect to track step changes
+  useEffect(() => {
+    console.log(`🔄 STEP CHANGED: Step ${step} activated`);
+    
+    if (step === 4) {
+      console.log('🎯 STEP 4 ACTIVATED - Interests section should be visible');
+      console.log('📊 Current form data at step 4:', {
+        interestsCount: formData.interests.length,
+        tags: formData.tags,
+        inviteFriends: formData.inviteFriendsAfterCreate,
+        confirmationChecked
+      });
+      
+      // Give time for animation
+      setTimeout(() => {
+        console.log('📜 Scrolling to top of step 4');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 300);
+    }
+  }, [step]);
+
+  // Format currency
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: formData.currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+
+  // Handle budget preset selection
+  const handleBudgetPreset = (preset) => {
+    console.log('💰 Budget preset selected:', preset.label);
+    setFormData(prev => ({
+      ...prev,
+      minBudget: preset.min.toString(),
+      maxBudget: preset.max.toString()
+    }));
+  };
+
+  // Handle min budget slider change
+  const handleMinBudgetChange = (e) => {
+    const value = parseInt(e.target.value);
+    console.log('📉 Min budget changed to:', value);
+    if (value <= parseInt(formData.maxBudget)) {
+      setFormData(prev => ({
+        ...prev,
+        minBudget: value.toString()
+      }));
+    }
+  };
+
+  // Handle max budget slider change
+  const handleMaxBudgetChange = (e) => {
+    const value = parseInt(e.target.value);
+    console.log('📈 Max budget changed to:', value);
+    if (value >= parseInt(formData.minBudget)) {
+      setFormData(prev => ({
+        ...prev,
+        maxBudget: value.toString()
+      }));
+    }
+  };
+
   // Validation function
-  const validateStep = (step) => {
+  const validateStep = (stepNumber) => {
+    console.log(`🔍 Validating step ${stepNumber}`);
     const newErrors = {};
     
-    if (step === 1) {
+    if (stepNumber === 1) {
       if (!formData.startingLocation.trim()) {
         newErrors.startingLocation = 'Where are you starting from? This is required for route planning! 🗺️';
       }
@@ -146,7 +229,7 @@ const CreateTripPage = () => {
       }
     }
     
-    if (step === 2) {
+    if (stepNumber === 2) {
       if (!formData.minBudget || formData.minBudget === '') {
         newErrors.minBudget = 'What\'s your minimum budget? This helps match with similar travelers 💰';
       } else if (parseInt(formData.minBudget) < 0) {
@@ -172,12 +255,21 @@ const CreateTripPage = () => {
       }
     }
     
+    // Steps 3 and 4 are optional, no validation needed
+    if (stepNumber === 3 || stepNumber === 4) {
+      console.log(`✅ Step ${stepNumber} is optional, skipping validation`);
+    }
+    
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const isValid = Object.keys(newErrors).length === 0;
+    console.log(`📋 Step ${stepNumber} validation result:`, isValid ? '✅ Valid' : '❌ Invalid', newErrors);
+    return isValid;
   };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    
+    console.log(`✏️ Field changed: ${name} = ${type === 'checkbox' ? checked : value}`);
     
     // Clear error when user starts typing
     if (errors[name]) {
@@ -185,18 +277,14 @@ const CreateTripPage = () => {
     }
     
     if (type === 'checkbox') {
-      const currentArray = formData[name] || [];
-      if (checked) {
-        setFormData({ ...formData, [name]: [...currentArray, value] });
-      } else {
-        setFormData({ ...formData, [name]: currentArray.filter(item => item !== value) });
-      }
+      setFormData({ ...formData, [name]: checked });
     } else {
       setFormData({ ...formData, [name]: value });
     }
   };
 
   const handleMultiSelect = (name, value) => {
+    console.log(`🎯 Multi-select: ${name}, value: ${value}`);
     const currentArray = formData[name] || [];
     if (currentArray.includes(value)) {
       setFormData({ ...formData, [name]: currentArray.filter(item => item !== value) });
@@ -206,6 +294,7 @@ const CreateTripPage = () => {
   };
 
   const handleLocationSelect = (type, locationData) => {
+    console.log(`📍 Location selected (${type}):`, locationData.address);
     if (type === 'starting') {
       setFormData(prev => ({
         ...prev,
@@ -234,69 +323,136 @@ const CreateTripPage = () => {
   };
 
   const nextStep = () => {
+    console.log(`➡️ Next step button clicked, current step: ${step}`);
     if (validateStep(step)) {
       setStep(step + 1);
       window.scrollTo(0, 0);
     } else {
+      console.log('❌ Cannot proceed to next step, validation failed');
       // Scroll to first error
       const firstError = Object.keys(errors)[0];
-      const errorElement = document.querySelector(`[name="${firstError}"]`);
-      if (errorElement) {
-        errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        errorElement.focus();
+      if (firstError) {
+        const errorElement = document.querySelector(`[name="${firstError}"]`);
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          errorElement.focus();
+        }
       }
     }
   };
 
   const prevStep = () => {
+    console.log(`⬅️ Previous step button clicked, current step: ${step}`);
     setStep(step - 1);
     window.scrollTo(0, 0);
   };
 
+  // CRITICAL FIX: Updated handleSubmit with proper delays and validation
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    console.log('🚀 ========== FORM SUBMISSION STARTED ==========');
+    console.log('📅 Submission timestamp:', new Date().toISOString());
     
-    // Final validation
-    if (!validateStep(step)) {
-      setMessage('Please fix the errors above before creating your trip! 🛠️');
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('📊 Current state:', {
+      step,
+      formSubmitted,
+      loading,
+      hasStartingCoords: !!formData.startingLocationCoords,
+      hasDestinationCoords: !!formData.destinationCoords
+    });
+    
+    // Prevent multiple submissions
+    if (loading || formSubmitted) {
+      console.log('❌ Preventing duplicate submission - loading:', loading, 'formSubmitted:', formSubmitted);
       return;
     }
     
-    // Validate all steps
-    let hasErrors = false;
-    for (let i = 1; i <= 4; i++) {
+    // Ensure we're on step 4 before submitting
+    if (step !== 4) {
+      console.log('⚠️ Not on step 4, cannot submit. Current step:', step);
+      setStep(4);
+      setMessage('Please complete all steps before creating your trip!');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    
+    // Validate all required steps (1 and 2)
+    console.log('🔍 Validating required steps...');
+    for (let i = 1; i <= 2; i++) {
       if (!validateStep(i)) {
-        hasErrors = true;
-        break;
+        console.log(`❌ Validation failed for step ${i}`);
+        setStep(i);
+        setMessage('Please complete all required fields before creating your trip! 📝');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
       }
     }
     
-    if (hasErrors) {
-      setMessage('Please complete all required fields before creating your trip! 📝');
-      return;
-    }
+    console.log('✅ All required steps validated successfully');
     
-    // Validate both locations are provided
+    // Validate locations
     if (!formData.startingLocation || !formData.destination) {
+      console.log('❌ Missing locations');
       setMessage('Please provide both starting location and destination! 🗺️');
+      setStep(1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     
     if (!formData.startingLocationCoords || !formData.destinationCoords) {
+      console.log('❌ Missing location coordinates');
       setMessage('Please select valid locations using the location picker! 📍');
+      setStep(1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     
+    console.log('✅ Locations validated');
+    
+    // Validate budget
+    if (parseInt(formData.minBudget) > parseInt(formData.maxBudget)) {
+      console.log('❌ Invalid budget range');
+      setMessage('Minimum budget cannot be greater than maximum budget!');
+      setStep(2);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    
+    console.log('✅ Budget validated');
+    
+    // Show warning if interests are too few (but don't block)
+    console.log(`📊 Interests selected: ${formData.interests.length}`);
+    if (formData.interests.length < 3) {
+      console.log('⚠️ Low interests count - showing confirmation dialog');
+      const proceed = window.confirm(
+        'You selected less than 3 interests. This might affect finding perfect travel buddies.\n\nDo you want to proceed anyway?'
+      );
+      if (!proceed) {
+        console.log('❌ User chose to add more interests');
+        setStep(4);
+        setMessage('Add more interests for better matches! 🎯');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      console.log('✅ User chose to proceed with low interests');
+    }
+    
     try {
+      console.log('🔒 Setting loading and form submitted states');
       setLoading(true);
+      setFormSubmitted(true);
       setMessage('Creating your travel squad... ✈️');
       
-      // Prepare tags array
+      console.log('⏳ Showing creating message for 2 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Prepare group data
+      console.log('📝 Preparing group data...');
       const tagsArray = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
       
-      // Prepare group data with all preferences
       const groupData = {
-        // Basic info
         destination: formData.destination,
         startingLocation: {
           address: formData.startingLocation,
@@ -309,20 +465,14 @@ const CreateTripPage = () => {
         description: formData.description,
         startDate: formData.startDate,
         endDate: formData.endDate,
-        
-        // Budget
         budget: {
           min: parseInt(formData.minBudget),
           max: parseInt(formData.maxBudget),
           currency: formData.currency
         },
-        
-        // Group settings
         maxMembers: parseInt(formData.maxMembers),
         groupType: formData.groupType,
         privacy: formData.privacy,
-        
-        // Trip preferences
         travelPreferences: {
           travelStyle: formData.travelStyle,
           accommodationType: formData.accommodationType,
@@ -332,29 +482,62 @@ const CreateTripPage = () => {
           petsAllowed: formData.petsAllowed,
           genderPreference: formData.genderPreference
         },
-        
-        // Interests
         interests: formData.interests,
         tags: tagsArray
       };
       
-      const res = await createGroup(groupData);
-      setMessage('✅ Trip created! Your travel squad is ready!');
+      console.log('📤 Sending group data to API:', JSON.stringify(groupData, null, 2));
       
-      // Navigate to the new group after 2 seconds
-      setTimeout(() => {
-        if (res.data && res.data._id) {
-          navigate(`/groups/${res.data._id}`);
-        } else {
-          navigate('/my-groups');
-        }
-      }, 2000);
+      const res = await createGroup(groupData);
+console.log('📥 API Response received:', res);
+
+// SIMPLE FIX: Extract group ID correctly
+let groupId = res.data?._id; // Direct access since your API returns _id at root
+
+if (!groupId && res.data?.data?._id) {
+  groupId = res.data.data._id; // Fallback to nested
+}
+
+console.log('✅ Group created with ID:', groupId);
+
+if (groupId) {
+  setCreatedGroupId(groupId);
+  setMessage('✅ Trip created successfully! Your travel squad is ready!');
+  
+  setTimeout(() => {
+    console.log('🔄 Redirecting to:', `/groups/${groupId}/invite-friends`);
+    
+    // SIMPLE REDIRECTION - pass groupId in state
+    navigate(`/groups/${groupId}/invite-friends`, { 
+      state: { 
+        groupId: groupId, // This is the KEY FIX
+        groupName: formData.destination,
+        fromCreate: true 
+      }
+    });
+    
+  }, 2000);
+} else {
+  console.error('❌ No group ID in response:', res.data);
+  setMessage('Trip created! Check your groups list.');
+  setTimeout(() => navigate('/groups'), 2000);
+}
       
     } catch (error) {
-      console.error('Error creating group:', error);
-      setMessage(error.response?.data?.message || 'Oops! Something went wrong. Try again!');
-    } finally {
+      console.error('❌ Error creating group:', error);
+      console.error('Error response:', error.response);
+      console.error('Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      
+      setFormSubmitted(false);
       setLoading(false);
+      setMessage(error.response?.data?.message || 'Oops! Something went wrong. Try again!');
+      
+      // Scroll to show error message
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -363,7 +546,7 @@ const CreateTripPage = () => {
 
   // Render Step 1: Basic Info
   const renderStep1 = () => (
-    <div className="space-y-6">
+    <div className="space-y-6" data-step="1">
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl">
         <h3 className="text-xl font-bold text-gray-800 mb-2">Let's Plan Your Adventure! 🌍</h3>
         <p className="text-gray-600">Tell us about your trip. Be specific to find perfect travel buddies!</p>
@@ -378,8 +561,11 @@ const CreateTripPage = () => {
           </label>
           <button
             type="button"
-            onClick={getLocation}
-            className="text-sm bg-green-100 text-green-700 px-3 py-1 rounded-lg hover:bg-green-200 flex items-center"
+            onClick={() => {
+              console.log('📍 Use my location button clicked');
+              getLocation();
+            }}
+            className="text-sm bg-green-100 text-green-700 px-3 py-1 rounded-lg hover:bg-green-200 flex items-center transition-colors"
           >
             <FaLocationArrow className="mr-1" />
             Use My Location
@@ -535,85 +721,168 @@ const CreateTripPage = () => {
     </div>
   );
 
-  // Render Step 2: Budget & Group Settings
+  // Render Step 2: Budget & Group Settings (UPDATED WITH SLIDERS)
   const renderStep2 = () => (
-    <div className="space-y-6">
+    <div className="space-y-6" data-step="2">
       <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl">
         <h3 className="text-xl font-bold text-gray-800 mb-2">Money & Squad Vibes 💸👥</h3>
         <p className="text-gray-600">Set your budget and squad preferences</p>
       </div>
       
-      {/* Budget */}
+      {/* Budget Section - Updated with Sliders */}
       <div className="bg-white p-6 rounded-xl border-2 border-gray-100">
         <label className="block text-gray-700 mb-4 font-medium flex items-center">
           <FaMoneyBillWave className="mr-2 text-green-500" />
           Budget Range (Per Person) *
         </label>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-gray-600 mb-2">From *</label>
-            <div className="flex items-center">
-              <span className="bg-gray-100 px-4 py-3 rounded-l-lg border">₹</span>
-              <input 
-                type="number" 
-                name="minBudget" 
-                placeholder="5,000" 
-                value={formData.minBudget}
-                onChange={handleChange}
-                min="0"
-                required 
-                className={`flex-1 border p-3 rounded-r-lg focus:ring-2 focus:ring-blue-500 ${
-                  errors.minBudget ? 'border-red-300 bg-red-50' : 'border-gray-200'
+        {/* Budget Presets */}
+        <div className="mb-6">
+          <p className="text-gray-600 mb-3">Quick presets:</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {budgetPresets.map(preset => (
+              <button
+                type="button"
+                key={preset.label}
+                onClick={() => handleBudgetPreset(preset)}
+                className={`p-3 rounded-lg border-2 flex flex-col items-center transition-all ${
+                  parseInt(formData.minBudget) === preset.min && parseInt(formData.maxBudget) === preset.max
+                    ? 'border-green-500 bg-green-50 transform scale-105'
+                    : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
                 }`}
-              />
-            </div>
-            {errors.minBudget && (
-              <div className="mt-2 flex items-center text-red-600 text-sm">
-                <FaExclamationCircle className="mr-2" />
-                {errors.minBudget}
-              </div>
-            )}
-          </div>
-          
-          <div>
-            <label className="block text-gray-600 mb-2">To *</label>
-            <div className="flex items-center">
-              <span className="bg-gray-100 px-4 py-3 rounded-l-lg border">₹</span>
-              <input 
-                type="number" 
-                name="maxBudget" 
-                placeholder="20,000" 
-                value={formData.maxBudget}
-                onChange={handleChange}
-                min={formData.minBudget || "0"}
-                required 
-                className={`flex-1 border p-3 rounded-r-lg focus:ring-2 focus:ring-blue-500 ${
-                  errors.maxBudget ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                }`}
-              />
-            </div>
-            {errors.maxBudget && (
-              <div className="mt-2 flex items-center text-red-600 text-sm">
-                <FaExclamationCircle className="mr-2" />
-                {errors.maxBudget}
-              </div>
-            )}
+              >
+                <span className="text-2xl mb-1">{preset.icon}</span>
+                <span className="text-sm font-medium">{preset.label}</span>
+                <span className="text-xs text-gray-500 mt-1">
+                  ₹{preset.min.toLocaleString()} - ₹{preset.max.toLocaleString()}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
         
-        <div className="mt-4 text-sm text-gray-500">
-          <div className="flex justify-between mb-1">
-            <span>Budget</span>
-            <span>Premium</span>
+        {/* Budget Sliders */}
+        <div className="space-y-8">
+          {/* Minimum Budget Slider */}
+          <div>
+            <div className="flex justify-between mb-2">
+              <label className="text-gray-600 font-medium flex items-center">
+                <FaRupeeSign className="mr-1" />
+                Minimum Budget
+              </label>
+              <span className="font-bold text-green-600">
+                {formatCurrency(parseInt(formData.minBudget))}
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type="range"
+                min="1000"
+                max="100000"
+                step="1000"
+                value={formData.minBudget}
+                onChange={handleMinBudgetChange}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-green"
+                style={{
+                  background: `linear-gradient(to right, #10b981 0%, #10b981 ${((parseInt(formData.minBudget) - 1000) / (100000 - 1000)) * 100}%, #e5e7eb ${((parseInt(formData.minBudget) - 1000) / (100000 - 1000)) * 100}%, #e5e7eb 100%)`
+                }}
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-2">
+                <span>₹1,000</span>
+                <span>₹50,000</span>
+                <span>₹1,00,000</span>
+              </div>
+            </div>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-green-500 h-2 rounded-full" 
-              style={{ width: formData.minBudget ? `${Math.min((parseInt(formData.minBudget) / 50000) * 100, 100)}%` : '0%' }}
-            ></div>
+          
+          {/* Maximum Budget Slider */}
+          <div>
+            <div className="flex justify-between mb-2">
+              <label className="text-gray-600 font-medium flex items-center">
+                <FaRupeeSign className="mr-1" />
+                Maximum Budget
+              </label>
+              <span className="font-bold text-green-600">
+                {formatCurrency(parseInt(formData.maxBudget))}
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type="range"
+                min="1000"
+                max="100000"
+                step="1000"
+                value={formData.maxBudget}
+                onChange={handleMaxBudgetChange}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-blue"
+                style={{
+                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((parseInt(formData.maxBudget) - 1000) / (100000 - 1000)) * 100}%, #e5e7eb ${((parseInt(formData.maxBudget) - 1000) / (100000 - 1000)) * 100}%, #e5e7eb 100%)`
+                }}
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-2">
+                <span>₹1,000</span>
+                <span>₹50,000</span>
+                <span>₹1,00,000</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Budget Display */}
+          <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-sm text-gray-600">Your Budget Range</div>
+                <div className="text-2xl font-bold text-gray-800">
+                  {formatCurrency(parseInt(formData.minBudget))} - {formatCurrency(parseInt(formData.maxBudget))}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-600">Average</div>
+                <div className="text-xl font-bold text-purple-600">
+                  {formatCurrency((parseInt(formData.minBudget) + parseInt(formData.maxBudget)) / 2)}
+                </div>
+              </div>
+            </div>
+            
+            {/* Budget Progress Bar */}
+            <div className="mt-4">
+              <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Budget Range</span>
+                <span>{formatCurrency(parseInt(formData.maxBudget) - parseInt(formData.minBudget))} range</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className="bg-gradient-to-r from-green-500 to-blue-500 h-3 rounded-full relative"
+                  style={{ 
+                    width: `${((parseInt(formData.maxBudget) - 1000) / (100000 - 1000)) * 100}%`,
+                    left: `${((parseInt(formData.minBudget) - 1000) / (100000 - 1000)) * 100}%`
+                  }}
+                >
+                  <div className="absolute -left-1 -top-1 w-5 h-5 bg-green-600 rounded-full border-2 border-white"></div>
+                  <div className="absolute -right-1 -top-1 w-5 h-5 bg-blue-600 rounded-full border-2 border-white"></div>
+                </div>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500 mt-2">
+                <span>Min: {formatCurrency(parseInt(formData.minBudget))}</span>
+                <span>Max: {formatCurrency(parseInt(formData.maxBudget))}</span>
+              </div>
+            </div>
           </div>
         </div>
+        
+        {errors.minBudget && (
+          <div className="mt-2 flex items-center text-red-600 text-sm">
+            <FaExclamationCircle className="mr-2" />
+            {errors.minBudget}
+          </div>
+        )}
+        
+        {errors.maxBudget && (
+          <div className="mt-2 flex items-center text-red-600 text-sm">
+            <FaExclamationCircle className="mr-2" />
+            {errors.maxBudget}
+          </div>
+        )}
       </div>
       
       {/* Group Size */}
@@ -628,11 +897,14 @@ const CreateTripPage = () => {
             <button
               type="button"
               key={size}
-              onClick={() => setFormData({...formData, maxMembers: size.toString()})}
-              className={`px-4 py-3 rounded-lg border-2 ${
+              onClick={() => {
+                console.log('👥 Group size selected:', size);
+                setFormData({...formData, maxMembers: size.toString()});
+              }}
+              className={`px-4 py-3 rounded-lg border-2 transition-all ${
                 parseInt(formData.maxMembers) === size 
-                  ? 'border-blue-500 bg-blue-50 text-blue-600' 
-                  : 'border-gray-200 hover:border-blue-300'
+                  ? 'border-blue-500 bg-blue-50 text-blue-600 transform scale-105' 
+                  : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
               }`}
             >
               <div className="font-bold text-lg">{size}</div>
@@ -653,11 +925,14 @@ const CreateTripPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <button
               type="button"
-              onClick={() => setFormData({...formData, groupType: 'open'})}
-              className={`p-4 rounded-lg border-2 text-center ${
+              onClick={() => {
+                console.log('🏷️ Group type selected: open');
+                setFormData({...formData, groupType: 'open'});
+              }}
+              className={`p-4 rounded-lg border-2 text-center transition-all ${
                 formData.groupType === 'open' 
-                  ? 'border-green-500 bg-green-50' 
-                  : 'border-gray-200 hover:border-green-300'
+                  ? 'border-green-500 bg-green-50 transform scale-105' 
+                  : 'border-gray-200 hover:border-green-300 hover:bg-green-50'
               }`}
             >
               <div className="font-bold">Open</div>
@@ -666,11 +941,14 @@ const CreateTripPage = () => {
             
             <button
               type="button"
-              onClick={() => setFormData({...formData, groupType: 'verified'})}
-              className={`p-4 rounded-lg border-2 text-center ${
+              onClick={() => {
+                console.log('🏷️ Group type selected: verified');
+                setFormData({...formData, groupType: 'verified'});
+              }}
+              className={`p-4 rounded-lg border-2 text-center transition-all ${
                 formData.groupType === 'verified' 
-                  ? 'border-yellow-500 bg-yellow-50' 
-                  : 'border-gray-200 hover:border-yellow-300'
+                  ? 'border-yellow-500 bg-yellow-50 transform scale-105' 
+                  : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50'
               }`}
             >
               <div className="font-bold">Verified</div>
@@ -679,11 +957,14 @@ const CreateTripPage = () => {
             
             <button
               type="button"
-              onClick={() => setFormData({...formData, groupType: 'invite'})}
-              className={`p-4 rounded-lg border-2 text-center ${
+              onClick={() => {
+                console.log('🏷️ Group type selected: invite');
+                setFormData({...formData, groupType: 'invite'});
+              }}
+              className={`p-4 rounded-lg border-2 text-center transition-all ${
                 formData.groupType === 'invite' 
-                  ? 'border-purple-500 bg-purple-50' 
-                  : 'border-gray-200 hover:border-purple-300'
+                  ? 'border-purple-500 bg-purple-50 transform scale-105' 
+                  : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50'
               }`}
             >
               <div className="font-bold">Invite Only</div>
@@ -697,7 +978,7 @@ const CreateTripPage = () => {
 
   // Render Step 3: Travel Preferences (Optional)
   const renderStep3 = () => (
-    <div className="space-y-6">
+    <div className="space-y-6" data-step="3">
       <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-xl">
         <h3 className="text-xl font-bold text-gray-800 mb-2">Travel Style & Preferences 🎯</h3>
         <p className="text-gray-600">Match with like-minded travelers (Optional but recommended!)</p>
@@ -712,10 +993,10 @@ const CreateTripPage = () => {
               type="button"
               key={style.id}
               onClick={() => handleMultiSelect('travelStyle', style.id)}
-              className={`p-3 rounded-lg border-2 flex flex-col items-center ${
+              className={`p-3 rounded-lg border-2 flex flex-col items-center transition-all ${
                 formData.travelStyle.includes(style.id) 
-                  ? 'border-blue-500 bg-blue-50' 
-                  : 'border-gray-200 hover:border-blue-300'
+                  ? 'border-blue-500 bg-blue-50 transform scale-105' 
+                  : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50'
               }`}
             >
               <span className="text-2xl mb-1">{style.icon}</span>
@@ -737,10 +1018,10 @@ const CreateTripPage = () => {
               type="button"
               key={mode.id}
               onClick={() => handleMultiSelect('transportMode', mode.id)}
-              className={`p-3 rounded-lg border-2 flex items-center justify-center ${
+              className={`p-3 rounded-lg border-2 flex items-center justify-center transition-all ${
                 formData.transportMode.includes(mode.id) 
-                  ? 'border-orange-500 bg-orange-50' 
-                  : 'border-gray-200 hover:border-orange-300'
+                  ? 'border-orange-500 bg-orange-50 transform scale-105' 
+                  : 'border-gray-200 hover:border-orange-300 hover:bg-orange-50'
               }`}
             >
               <span className="text-xl mr-2">{mode.icon}</span>
@@ -765,10 +1046,13 @@ const CreateTripPage = () => {
                 <button
                   type="button"
                   key={option}
-                  onClick={() => setFormData({...formData, smokingAllowed: option})}
-                  className={`px-4 py-2 rounded-lg capitalize ${
+                  onClick={() => {
+                    console.log('🚬 Smoking option selected:', option);
+                    setFormData({...formData, smokingAllowed: option});
+                  }}
+                  className={`px-4 py-2 rounded-lg capitalize transition-all ${
                     formData.smokingAllowed === option 
-                      ? 'bg-gray-800 text-white' 
+                      ? 'bg-gray-800 text-white transform scale-105' 
                       : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                   }`}
                 >
@@ -788,10 +1072,13 @@ const CreateTripPage = () => {
                 <button
                   type="button"
                   key={option}
-                  onClick={() => setFormData({...formData, drinkingAllowed: option})}
-                  className={`px-4 py-2 rounded-lg capitalize ${
+                  onClick={() => {
+                    console.log('🍷 Drinking option selected:', option);
+                    setFormData({...formData, drinkingAllowed: option});
+                  }}
+                  className={`px-4 py-2 rounded-lg capitalize transition-all ${
                     formData.drinkingAllowed === option 
-                      ? 'bg-purple-500 text-white' 
+                      ? 'bg-purple-500 text-white transform scale-105' 
                       : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                   }`}
                 >
@@ -811,10 +1098,13 @@ const CreateTripPage = () => {
                 <button
                   type="button"
                   key={option}
-                  onClick={() => setFormData({...formData, petsAllowed: option})}
-                  className={`px-4 py-2 rounded-lg capitalize ${
+                  onClick={() => {
+                    console.log('🐾 Pets option selected:', option);
+                    setFormData({...formData, petsAllowed: option});
+                  }}
+                  className={`px-4 py-2 rounded-lg capitalize transition-all ${
                     formData.petsAllowed === option 
-                      ? 'bg-yellow-500 text-white' 
+                      ? 'bg-yellow-500 text-white transform scale-105' 
                       : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                   }`}
                 >
@@ -832,8 +1122,11 @@ const CreateTripPage = () => {
             <select 
               name="genderPreference" 
               value={formData.genderPreference}
-              onChange={handleChange}
-              className="border p-2 rounded-lg"
+              onChange={(e) => {
+                console.log('⚧️ Gender preference selected:', e.target.value);
+                handleChange(e);
+              }}
+              className="border p-2 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all"
             >
               <option value="any">Any Gender</option>
               <option value="male">Male Only</option>
@@ -847,12 +1140,12 @@ const CreateTripPage = () => {
     </div>
   );
 
-  // Render Step 4: Interests & Tags (Optional)
+  // Render Step 4: Interests & Tags (Optional) - UPDATED to prevent auto-submit
   const renderStep4 = () => (
-    <div className="space-y-6">
+    <div className="space-y-6" data-step="4">
       <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-xl">
         <h3 className="text-xl font-bold text-gray-800 mb-2">Interests & Activities 🎉</h3>
-        <p className="text-gray-600">What makes your trip special? (Optional)</p>
+        <p className="text-gray-600">What makes your trip special? (Optional but recommended for better matches!)</p>
       </div>
       
       {/* Interests */}
@@ -864,10 +1157,10 @@ const CreateTripPage = () => {
               type="button"
               key={interest.id}
               onClick={() => handleMultiSelect('interests', interest.id)}
-              className={`p-3 rounded-lg border-2 flex flex-col items-center ${
+              className={`p-3 rounded-lg border-2 flex flex-col items-center transition-all duration-200 ${
                 formData.interests.includes(interest.id) 
-                  ? 'border-yellow-500 bg-yellow-50' 
-                  : 'border-gray-200 hover:border-yellow-300'
+                  ? 'border-yellow-500 bg-yellow-50 transform scale-105' 
+                  : 'border-gray-200 hover:border-yellow-300 hover:bg-yellow-50'
               }`}
             >
               <span className="text-2xl mb-1">{interest.icon}</span>
@@ -875,8 +1168,14 @@ const CreateTripPage = () => {
             </button>
           ))}
         </div>
-        <div className="mt-3 text-sm text-gray-500">
-          Selected: {formData.interests.length} interests
+        <div className="mt-3 text-sm text-gray-500 flex items-center">
+          <div className="mr-3">Selected: <span className="font-bold">{formData.interests.length}</span> interests</div>
+          {formData.interests.length < 3 && (
+            <div className="text-amber-600 flex items-center">
+              <FaExclamationCircle className="mr-1" />
+              Select at least 3 interests for better matches!
+            </div>
+          )}
         </div>
       </div>
       
@@ -892,7 +1191,7 @@ const CreateTripPage = () => {
           placeholder="#beachvibes #foodietour #adventure #solotravel #digitalnomad" 
           value={formData.tags}
           onChange={handleChange}
-          className="border-2 border-gray-200 p-4 w-full rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="border-2 border-gray-200 p-4 w-full rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
         />
         
         {/* Popular Tags */}
@@ -904,6 +1203,7 @@ const CreateTripPage = () => {
                 type="button"
                 key={tag}
                 onClick={() => {
+                  console.log('🏷️ Tag clicked:', tag);
                   const currentTags = formData.tags ? formData.tags.split(',').map(t => t.trim()) : [];
                   if (!currentTags.includes(tag)) {
                     setFormData({
@@ -912,7 +1212,7 @@ const CreateTripPage = () => {
                     });
                   }
                 }}
-                className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-gray-200"
+                className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-gray-200 transition-colors"
               >
                 {tag}
               </button>
@@ -921,10 +1221,58 @@ const CreateTripPage = () => {
         </div>
       </div>
       
-      {/* Final Preview */}
+      {/* Friend Invitation Option */}
+      <div className="bg-white p-6 rounded-xl border-2 border-gray-100">
+        <label className="block text-gray-700 mb-4 font-medium flex items-center">
+          <FaUserFriends className="mr-2 text-purple-500" />
+          Invite Friends to Your Trip
+        </label>
+        
+        <div className="p-4 bg-purple-50 rounded-lg">
+          <div className="flex items-start">
+            <input
+              type="checkbox"
+              id="inviteFriendsAfterCreate"
+              name="inviteFriendsAfterCreate"
+              checked={formData.inviteFriendsAfterCreate}
+              onChange={(e) => {
+                console.log('👥 Invite friends checkbox:', e.target.checked);
+                handleChange(e);
+              }}
+              className="mt-1 mr-3 h-5 w-5 text-purple-600 rounded focus:ring-purple-500"
+            />
+            <div>
+              <label htmlFor="inviteFriendsAfterCreate" className="font-medium text-gray-700 cursor-pointer">
+                Send invitation requests to my friends
+              </label>
+              <p className="text-sm text-gray-600 mt-1">
+                After creating the trip, you'll be redirected to a page where you can select friends to invite.
+                They'll receive a request: "Hey, I'm going on a trip! Want to join me?"
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="mt-4 text-sm text-gray-500">
+          <div className="flex items-center mb-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+            <span>Select friends from your followers/friends list</span>
+          </div>
+          <div className="flex items-center mb-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+            <span>They can accept or decline your invitation</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+            <span>Accepted friends automatically join your travel squad</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Confirmation Section */}
       <div className="bg-gradient-to-r from-blue-50 to-cyan-50 p-6 rounded-xl">
         <h3 className="text-xl font-bold text-gray-800 mb-4">Ready to find your travel squad? 🚀</h3>
-        <div className="space-y-2">
+        <div className="space-y-2 mb-4">
           <div className="flex items-center">
             <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
             <span>Your trip will be visible to matching travelers</span>
@@ -936,6 +1284,36 @@ const CreateTripPage = () => {
           <div className="flex items-center">
             <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
             <span>Chat with squad before finalizing plans</span>
+          </div>
+          {formData.inviteFriendsAfterCreate && (
+            <div className="flex items-center">
+              <div className="w-2 h-2 bg-purple-500 rounded-full mr-3"></div>
+              <span className="font-medium text-purple-700">You'll be able to invite friends after creation</span>
+            </div>
+          )}
+        </div>
+        
+        {/* Confirmation Check */}
+        <div className="mt-4 p-4 bg-white rounded-lg border border-blue-200">
+          <div className="flex items-start">
+            <input
+              type="checkbox"
+              id="confirmReady"
+              checked={confirmationChecked}
+              onChange={(e) => {
+                console.log('✅ Confirmation checkbox:', e.target.checked);
+                setConfirmationChecked(e.target.checked);
+              }}
+              className="mt-1 mr-3 h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <div>
+              <label htmlFor="confirmReady" className="font-medium text-gray-700 cursor-pointer">
+                I confirm that I've reviewed all trip details
+              </label>
+              <p className="text-sm text-gray-600 mt-1">
+                Check this box to enable the "Create Trip" button. This ensures you've had time to review all your selections.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -977,16 +1355,21 @@ const CreateTripPage = () => {
             {/* Main Message */}
             {message && (
               <div className={`mb-6 p-4 rounded-xl ${
-                message.includes('Error') || message.includes('Please fix') || message.includes('Oops')
+                message.includes('Error') || message.includes('Please') || message.includes('Oops')
                   ? 'bg-red-50 border border-red-200 text-red-700' 
                   : 'bg-green-50 border border-green-200 text-green-700'
               }`}>
                 <div className="flex items-center">
                   <span className="text-xl mr-2">
-                    {message.includes('Error') || message.includes('Please fix') || message.includes('Oops') ? '❌' : '✨'}
+                    {message.includes('Error') || message.includes('Please') || message.includes('Oops') ? '❌' : '✨'}
                   </span>
                   {message}
                 </div>
+                {createdGroupId && formData.inviteFriendsAfterCreate && (
+                  <div className="mt-2 text-sm">
+                    Redirecting to friend invitation page in 5 seconds...
+                  </div>
+                )}
               </div>
             )}
             
@@ -995,12 +1378,12 @@ const CreateTripPage = () => {
               <div className="flex items-center">
                 <FaExclamationCircle className="text-blue-500 mr-2" />
                 <span className="text-sm text-blue-700">
-                  <span className="font-semibold">Note:</span> Fields marked with * are required. Both starting location and destination are needed for route planning! 🗺️
+                  <span className="font-semibold">Note:</span> Steps 1 & 2 are required. Steps 3 & 4 are optional but recommended for better matches!
                 </span>
               </div>
             </div>
             
-            <form onSubmit={handleSubmit}>
+            <form ref={formRef} onSubmit={handleSubmit}>
               {step === 1 && renderStep1()}
               {step === 2 && renderStep2()}
               {step === 3 && renderStep3()}
@@ -1012,7 +1395,7 @@ const CreateTripPage = () => {
                   <button
                     type="button"
                     onClick={prevStep}
-                    className="px-8 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium"
+                    className="px-8 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors"
                   >
                     ← Back
                   </button>
@@ -1024,24 +1407,16 @@ const CreateTripPage = () => {
                   <button
                     type="button"
                     onClick={nextStep}
-                    className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl hover:from-blue-600 hover:to-purple-600 font-medium shadow-lg flex items-center"
+                    className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl hover:from-blue-600 hover:to-purple-600 font-medium shadow-lg flex items-center transition-all"
                   >
-                    {Object.keys(errors).length > 0 ? (
-                      <>
-                        Fix Errors First
-                        <FaExclamationCircle className="ml-2" />
-                      </>
-                    ) : (
-                      <>
-                        Continue →
-                      </>
-                    )}
+                    Continue →
                   </button>
                 ) : (
                   <button 
                     type="submit" 
-                    disabled={loading || !formData.startingLocationCoords || !formData.destinationCoords}
-                    className="px-12 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 font-medium shadow-lg text-lg disabled:opacity-50"
+                    disabled={loading || !formData.startingLocationCoords || !formData.destinationCoords || !confirmationChecked}
+                    className="px-12 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:from-green-600 hover:to-emerald-600 font-medium shadow-lg text-lg disabled:opacity-50 transition-all"
+                    onClick={() => console.log('🚀 Create button clicked, confirmation checked:', confirmationChecked)}
                   >
                     {loading ? (
                       <span className="flex items-center">
@@ -1049,12 +1424,12 @@ const CreateTripPage = () => {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                         </svg>
-                        Creating Your Squad...
+                        {createdGroupId ? 'Redirecting...' : 'Creating Your Squad...'}
                       </span>
                     ) : (
                       <>
                         <FaCheckCircle className="inline mr-2" />
-                        Launch My Travel Squad! 🚀
+                        {formData.inviteFriendsAfterCreate ? 'Create & Invite Friends →' : 'Create My Travel Squad! 🚀'}
                       </>
                     )}
                   </button>
@@ -1085,6 +1460,51 @@ const CreateTripPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Add CSS for custom slider styling */}
+      <style jsx>{`
+        .slider-green::-webkit-slider-thumb {
+          appearance: none;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: #10b981;
+          cursor: pointer;
+          border: 3px solid white;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+        
+        .slider-blue::-webkit-slider-thumb {
+          appearance: none;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 3px solid white;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+        
+        .slider-green::-moz-range-thumb {
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: #10b981;
+          cursor: pointer;
+          border: 3px solid white;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+        
+        .slider-blue::-moz-range-thumb {
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 3px solid white;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+      `}</style>
     </div>
   );
 };
