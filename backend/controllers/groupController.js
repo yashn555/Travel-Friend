@@ -197,20 +197,37 @@ exports.getAllGroups = async (req, res) => {
   try {
     console.log('📋 Fetching all groups');
     
+    // 🔥 FIRST: Run auto-complete for any past trips
+    const { autoCompletePastTrips } = require('../utils/autoCompleteTrips');
+    await autoCompletePastTrips();
+    
+    // Get only active groups (not completed or cancelled)
     const groups = await Group.find({
-      status: { $in: ['planning', 'confirmed'] },
-      endDate: { $gte: new Date() }
+      status: { $in: ['planning', 'confirmed', 'active'] }, // Exclude completed
+      endDate: { $gte: new Date() } // Only future or ongoing trips
     })
     .populate('createdBy', 'name profileImage')
     .populate('currentMembers.user', 'name profileImage')
     .sort({ createdAt: -1 });
 
     // Add isFull and availableSlots to each group
-   const enhancedGroups = groups.map(group => {
-  return group.getEnhancedData();
-});
+    const enhancedGroups = groups.map(group => {
+      const enhanced = group.getEnhancedData();
+      
+      // Add current members count
+      if (group.currentMembers && Array.isArray(group.currentMembers)) {
+        const approvedMembers = group.currentMembers.filter(m => 
+          m && m.status === 'approved'
+        );
+        enhanced.currentMembersCount = approvedMembers.length;
+      } else {
+        enhanced.currentMembersCount = 0;
+      }
+      
+      return enhanced;
+    });
 
-    console.log(`✅ Found ${enhancedGroups.length} groups`);
+    console.log(`✅ Found ${enhancedGroups.length} active groups (excluding completed/cancelled)`);
     
     res.status(200).json({
       success: true,

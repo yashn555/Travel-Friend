@@ -242,6 +242,11 @@ const GroupSchema = new mongoose.Schema({
     }
   },
   
+  autoCreated: {
+  type: Boolean,
+  default: false
+},
+
   // 🔥 NEW: Trip Itinerary (Optional)
   itinerary: [{
     day: Number,
@@ -682,7 +687,61 @@ GroupSchema.statics.completeUserPastTrips = async function(userId) {
     return 0;
   }
 };
+// 🔥 NEW: Auto-complete past trips (Add at the end of the file, before module.exports)
+GroupSchema.statics.autoUpdateAllPastTrips = async function() {
+  try {
+    const now = new Date();
+    console.log(`🔄 [AUTO-COMPLETE] Checking for past trips at ${now}`);
+    
+    // Find trips that ended in the past but aren't marked as completed
+    const result = await this.updateMany(
+      {
+        endDate: { $lt: now },
+        status: { $in: ['planning', 'confirmed', 'active'] }
+      },
+      {
+        $set: { 
+          status: 'completed',
+          updatedAt: now
+        }
+      }
+    );
+    
+    if (result.modifiedCount > 0) {
+      console.log(`✅ [AUTO-COMPLETE] Updated ${result.modifiedCount} trips to 'completed' status`);
+    }
+    
+    return result.modifiedCount;
+    
+  } catch (error) {
+    console.error('❌ [AUTO-COMPLETE] Error:', error);
+    return 0;
+  }
+};
 
+// 🔥 NEW: Check and auto-complete a single trip
+GroupSchema.methods.checkAndAutoComplete = function() {
+  try {
+    const now = new Date();
+    const endDate = new Date(this.endDate);
+    
+    // If trip ended in the past and is not already completed/cancelled
+    if (endDate < now && 
+        this.status !== 'completed' && 
+        this.status !== 'cancelled') {
+      
+      console.log(`🔄 Auto-completing trip ${this._id} (ended on ${this.endDate})`);
+      this.status = 'completed';
+      return true;
+    }
+    
+    return false;
+    
+  } catch (error) {
+    console.error('❌ Error in checkAndAutoComplete:', error);
+    return false;
+  }
+};
 
 // 🔥 ENHANCED INDEXES FOR BETTER PERFORMANCE
 GroupSchema.index({ status: 1, endDate: 1 });

@@ -22,8 +22,10 @@ const inviteRoutes = require('./routes/inviteRoutes');
 const groupNotificationRoutes = require('./routes/groupNotificationRoutes');
 const userGroupRoutes = require('./routes/userGroupRoutes');
 const nearbyUsersRoutes = require('./routes/nearbyUsers');
+const autoTripRoutes = require('./routes/autoTripRoutes');
+const { initAutoComplete } = require('./utils/autoCompleteTrips');
 
-
+initAutoComplete();
 // Initialize express
 const app = express();
 const server = http.createServer(app);
@@ -66,6 +68,7 @@ app.use('/api/invite', inviteRoutes);
 app.use('/api/notifications/group', groupNotificationRoutes);
 app.use('/api/user-groups', userGroupRoutes);
 app.use('/api/nearby-users', nearbyUsersRoutes);
+app.use('/api/auto-trip', autoTripRoutes);
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({

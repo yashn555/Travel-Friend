@@ -157,6 +157,11 @@ export const checkFollowStatus = async (userId) => {
   }
 };
 
+// ===== AUTO TRIP SUGGESTIONS =====
+export const getAutoTripSuggestions = (data) => 
+  api.post('/auto-trip/suggestions', data).then(res => res.data);
 
+export const createAutoTrip = (tripData) => 
+  api.post('/auto-trip/create', tripData).then(res => res.data);
 
 export default api;

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getDashboardData, requestToJoinGroup } from '../services/api';
 import Loader from '../components/common/Loader';
 import Button from '../components/common/Button';
+import SimpleTripPopup from '../components/common/SimpleTripPopup';
 import SimpleFooter from '../components/layout/SimpleFooter';
 import { 
   FaMapMarkerAlt, 
@@ -225,6 +226,7 @@ const DashboardPage = () => {
 
   return (
     <AdventureBackground footer={<SimpleFooter />}>
+      <SimpleTripPopup />
       <div className="pt-20 px-4 max-w-7xl mx-auto pb-8">
         {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">

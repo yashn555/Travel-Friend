@@ -708,9 +708,8 @@ exports.searchUsers = async (req, res) => {
 // @access  Private
 exports.getTripHistory = async (req, res) => {
   try {
-    console.log('Fetching trip history for user:', req.user.id);
+    console.log('📅 Fetching trip history for user:', req.user.id);
     
-    const Group = require('../models/Group');
     const mongoose = require('mongoose');
     const userId = req.user.id;
 
@@ -724,8 +723,29 @@ exports.getTripHistory = async (req, res) => {
 
     // Convert to ObjectId
     const userObjectId = new mongoose.Types.ObjectId(userId);
+    
+    // 🔥 IMPORTANT: First auto-complete any past trips for this user
+    const now = new Date();
+    
+    // Update user's past trips to completed status
+    await Group.updateMany(
+      {
+        $or: [
+          { createdBy: userObjectId },
+          { 
+            'currentMembers.user': userObjectId,
+            'currentMembers.status': 'approved'
+          }
+        ],
+        endDate: { $lt: now },
+        status: { $in: ['planning', 'confirmed', 'active'] }
+      },
+      {
+        $set: { status: 'completed' }
+      }
+    );
 
-    // Find completed trips where user is a member or creator
+    // Now fetch completed trips
     const trips = await Group.find({
       $or: [
         { createdBy: userObjectId },
@@ -736,9 +756,11 @@ exports.getTripHistory = async (req, res) => {
       ],
       status: 'completed'
     })
-    .select('destination startDate endDate status description budget currentMembers maxMembers createdBy')
+    .populate('createdBy', 'name profileImage email')
+    .populate('currentMembers.user', 'name profileImage email')
+    .select('destination startDate endDate status description budget currentMembers maxMembers createdBy startingLocation destinationLocation tags')
     .sort({ endDate: -1 })
-    .limit(20);
+    .limit(50);
 
     // Format the response
     const formattedTrips = trips.map(trip => {
@@ -746,12 +768,11 @@ exports.getTripHistory = async (req, res) => {
         trip.currentMembers.filter(m => m && m.status === 'approved') : 
         [];
       
-      // Safely check if user is creator
       const isCreator = trip.createdBy ? 
-        trip.createdBy.toString() === userId.toString() : 
+        trip.createdBy._id.toString() === userId.toString() : 
         false;
       
-      // Calculate duration safely
+      // Calculate duration
       let durationDays = 1;
       if (trip.startDate && trip.endDate) {
         try {
@@ -765,22 +786,34 @@ exports.getTripHistory = async (req, res) => {
       }
       
       return {
-        id: trip._id || trip.id,
+        _id: trip._id,
         destination: trip.destination || 'Unnamed Trip',
         startDate: trip.startDate,
         endDate: trip.endDate,
-        status: trip.status || 'completed',
+        status: trip.status,
         description: trip.description || '',
         groupSize: approvedMembers.length,
         maxMembers: trip.maxMembers || 0,
         budget: trip.budget || { min: 0, max: 0, currency: 'INR' },
         isCreator: isCreator,
         durationDays: durationDays,
-        createdBy: trip.createdBy
+        startingLocation: trip.startingLocation,
+        destinationLocation: trip.destinationLocation,
+        tags: trip.tags || [],
+        createdBy: {
+          _id: trip.createdBy._id,
+          name: trip.createdBy.name,
+          profileImage: trip.createdBy.profileImage
+        },
+        members: approvedMembers.map(m => ({
+          _id: m.user._id,
+          name: m.user.name,
+          profileImage: m.user.profileImage
+        }))
       };
     });
 
-    console.log(`Returning ${formattedTrips.length} trips for user ${userId}`);
+    console.log(`✅ Returning ${formattedTrips.length} completed trips for user ${userId}`);
     
     res.status(200).json({
       success: true,
@@ -789,8 +822,7 @@ exports.getTripHistory = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error in getTripHistory:', error.message);
-    console.error('Error stack:', error.stack);
+    console.error('❌ Error in getTripHistory:', error.message);
     res.status(500).json({
       success: false,
       message: 'Server error while fetching trip history',
