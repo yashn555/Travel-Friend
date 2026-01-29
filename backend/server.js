@@ -22,7 +22,9 @@ const inviteRoutes = require('./routes/inviteRoutes');
 const groupNotificationRoutes = require('./routes/groupNotificationRoutes');
 const userGroupRoutes = require('./routes/userGroupRoutes');
 const nearbyUsersRoutes = require('./routes/nearbyUsers');
+const testRoutes = require('./routes/testRoutes');
 const autoTripRoutes = require('./routes/autoTripRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
 const { initAutoComplete } = require('./utils/autoCompleteTrips');
 
 initAutoComplete();
@@ -69,6 +71,9 @@ app.use('/api/notifications/group', groupNotificationRoutes);
 app.use('/api/user-groups', userGroupRoutes);
 app.use('/api/nearby-users', nearbyUsersRoutes);
 app.use('/api/auto-trip', autoTripRoutes);
+app.use('/api/test', testRoutes);
+app.use('/api/expenses', expenseRoutes);
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({

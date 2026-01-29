@@ -1,7 +1,8 @@
-// backend/controllers/inviteController.js - COMPLETE FIXED VERSION
+// backend/controllers/inviteController.js - COMPLETE FIXED VERSION WITH EMAIL SUPPORT
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Group = require('../models/Group');
+const GroupEmailService = require('../services/groupEmailService'); // ADD EMAIL SERVICE
 
 // Helper function to safely get array length
 const safeArrayLength = (array) => {
@@ -16,6 +17,69 @@ const getApprovedMembersCount = (group) => {
   return group.currentMembers.filter(member => 
     member.status === 'approved'
   ).length;
+};
+
+// Helper function to send invitation emails
+const sendInvitationEmail = async (user, invitation, group, inviter) => {
+  try {
+    // Check if user has email
+    if (!user.email) {
+      console.log(`⚠️ No email for user ${user.name}, skipping email`);
+      return { 
+        success: false, 
+        skipped: true, 
+        reason: 'No email available',
+        emailSent: false 
+      };
+    }
+    
+    console.log(`📧 Preparing to send email to ${user.name} (${user.email})`);
+    
+    // Prepare email data
+    const emailData = {
+      inviterName: inviter.name || inviter.username || 'A friend',
+      groupName: group.destination || 'Trip Group',
+      destination: group.destination || 'Unknown Destination',
+      startDate: group.startDate || new Date(),
+      endDate: group.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      invitationId: invitation._id,
+      groupId: group._id,
+      customMessage: invitation.message || '',
+      maxMembers: group.maxMembers || 10,
+      currentMembers: getApprovedMembersCount(group)
+    };
+    
+    console.log('📤 Email data prepared:', {
+      recipient: user.email,
+      destination: emailData.destination,
+      inviter: emailData.inviterName
+    });
+    
+    // Send email using the email service
+    const emailResult = await GroupEmailService.sendGroupInvitationEmail(
+      user.email,
+      emailData
+    );
+    
+    console.log(`📧 Email result for ${user.email}:`, 
+      emailResult.success ? '✅ Success' : `❌ Failed: ${emailResult.error}`);
+    
+    return {
+      success: emailResult.success,
+      emailSent: emailResult.success,
+      error: emailResult.error,
+      messageId: emailResult.messageId
+    };
+    
+  } catch (emailError) {
+    console.error(`❌ Email sending error for ${user.email}:`, emailError.message);
+    return { 
+      success: false, 
+      emailSent: false,
+      error: emailError.message,
+      skipped: false 
+    };
+  }
 };
 
 // @desc    Get user's connections (followers + following)
@@ -96,7 +160,7 @@ exports.getConnections = async (req, res) => {
   }
 };
 
-// @desc    Invite friends to group - FIXED VERSION (NO TRANSACTIONS)
+// @desc    Invite friends to group - UPDATED WITH EMAIL SUPPORT
 // @route   POST /api/invite/:groupId/send
 // @access  Private
 exports.inviteToGroup = async (req, res) => {
@@ -166,6 +230,8 @@ exports.inviteToGroup = async (req, res) => {
     const invitations = [];
     let invitedCount = 0;
     const invitedUsers = new Set();
+    const emailsSent = [];
+    const emailsFailed = [];
     
     // Initialize arrays if they don't exist
     if (!group.invitations) {
@@ -229,7 +295,8 @@ exports.inviteToGroup = async (req, res) => {
               userId,
               success: false,
               error: 'User not found',
-              type: 'user_not_found'
+              type: 'user_not_found',
+              emailSent: false
             });
             continue;
           }
@@ -243,7 +310,8 @@ exports.inviteToGroup = async (req, res) => {
               email: user.email,
               success: false,
               error: 'Already a member of this group',
-              type: 'already_member'
+              type: 'already_member',
+              emailSent: false
             });
             continue;
           }
@@ -257,7 +325,8 @@ exports.inviteToGroup = async (req, res) => {
               email: user.email,
               success: false,
               error: 'Already invited to this group',
-              type: 'already_invited'
+              type: 'already_invited',
+              emailSent: false
             });
             continue;
           }
@@ -273,6 +342,28 @@ exports.inviteToGroup = async (req, res) => {
           await group.save();
           
           console.log(`📝 Created invitation with ID: ${invitation._id}`);
+          
+          // Send email notification
+          let emailResult = { success: false, emailSent: false };
+          if (user.email) {
+            try {
+              emailResult = await sendInvitationEmail(user, invitation, group, inviter);
+              if (emailResult.success) {
+                emailsSent.push(user.email);
+              } else if (!emailResult.skipped) {
+                emailsFailed.push({
+                  email: user.email,
+                  error: emailResult.error
+                });
+              }
+            } catch (emailError) {
+              console.error(`⚠️ Email error for ${user.email}:`, emailError.message);
+              emailsFailed.push({
+                email: user.email,
+                error: emailError.message
+              });
+            }
+          }
           
           // Add to user's personal notifications using EXISTING type
           user.addNotification(
@@ -300,7 +391,9 @@ exports.inviteToGroup = async (req, res) => {
             email: user.email,
             invitationId: invitation._id,
             success: true,
-            type: 'new_invitation'
+            type: 'new_invitation',
+            emailSent: emailResult.emailSent || false,
+            emailError: emailResult.error
           });
           
           invitedUsers.add(userId);
@@ -313,7 +406,8 @@ exports.inviteToGroup = async (req, res) => {
             userId,
             success: false,
             error: error.message,
-            type: 'error'
+            type: 'error',
+            emailSent: false
           });
         }
       }
@@ -333,7 +427,8 @@ exports.inviteToGroup = async (req, res) => {
               email,
               success: false,
               error: 'User with this email not found',
-              type: 'user_not_found'
+              type: 'user_not_found',
+              emailSent: false
             });
             continue;
           }
@@ -354,7 +449,8 @@ exports.inviteToGroup = async (req, res) => {
               name: user.name,
               success: false,
               error: 'Already a member of this group',
-              type: 'already_member'
+              type: 'already_member',
+              emailSent: false
             });
             continue;
           }
@@ -368,7 +464,8 @@ exports.inviteToGroup = async (req, res) => {
               name: user.name,
               success: false,
               error: 'Already invited to this group',
-              type: 'already_invited'
+              type: 'already_invited',
+              emailSent: false
             });
             continue;
           }
@@ -381,6 +478,28 @@ exports.inviteToGroup = async (req, res) => {
           group.invitations.push(invitation);
           
           await group.save();
+          
+          // Send email notification
+          let emailResult = { success: false, emailSent: false };
+          if (user.email) {
+            try {
+              emailResult = await sendInvitationEmail(user, invitation, group, inviter);
+              if (emailResult.success) {
+                emailsSent.push(user.email);
+              } else if (!emailResult.skipped) {
+                emailsFailed.push({
+                  email: user.email,
+                  error: emailResult.error
+                });
+              }
+            } catch (emailError) {
+              console.error(`⚠️ Email error for ${user.email}:`, emailError.message);
+              emailsFailed.push({
+                email: user.email,
+                error: emailError.message
+              });
+            }
+          }
           
           // Add to user's personal notifications
           user.addNotification(
@@ -408,7 +527,9 @@ exports.inviteToGroup = async (req, res) => {
             name: user.name,
             invitationId: invitation._id,
             success: true,
-            type: 'new_invitation'
+            type: 'new_invitation',
+            emailSent: emailResult.emailSent || false,
+            emailError: emailResult.error
           });
           
           invitedUsers.add(userId);
@@ -421,7 +542,8 @@ exports.inviteToGroup = async (req, res) => {
             email,
             success: false,
             error: error.message,
-            type: 'error'
+            type: 'error',
+            emailSent: false
           });
         }
       }
@@ -433,18 +555,29 @@ exports.inviteToGroup = async (req, res) => {
     
     const successfulInvitations = invitations.filter(i => i.success);
     const failedInvitations = invitations.filter(i => !i.success);
+    const successfulEmails = invitations.filter(i => i.emailSent).length;
     
-    console.log(`📊 Final results: ${invitedCount} invited, ${invitations.length} total processed`);
+    console.log(`📊 Final results: 
+      ${invitedCount} invited, 
+      ${invitations.length} total processed,
+      ${successfulEmails} emails sent,
+      ${emailsFailed.length} emails failed`);
     
     res.status(200).json({
       success: true,
       message: invitedCount > 0 
-        ? `Successfully sent ${invitedCount} invitation(s)`
+        ? `Successfully sent ${invitedCount} invitation(s)${successfulEmails > 0 ? ` and ${successfulEmails} email(s)` : ''}`
         : 'No new invitations sent',
       invitedCount,
       totalProcessed: invitations.length,
       successful: successfulInvitations.length,
       failed: failedInvitations.length,
+      emails: {
+        sent: emailsSent,
+        failed: emailsFailed,
+        sentCount: emailsSent.length,
+        failedCount: emailsFailed.length
+      },
       invitations,
       summary: {
         newInvitations: successfulInvitations.length,
@@ -532,7 +665,7 @@ exports.getMyInvitations = async (req, res) => {
   }
 };
 
-// @desc    Respond to group invitation - FIXED VERSION
+// @desc    Respond to group invitation - FIXED VERSION WITH EMAIL
 // @route   PUT /api/invite/:invitationId/respond
 // @access  Private
 exports.respondToInvitation = async (req, res) => {
@@ -575,6 +708,10 @@ exports.respondToInvitation = async (req, res) => {
     invitation.status = status;
     invitation.respondedAt = new Date();
     
+    // Get inviter details
+    const inviter = await User.findById(invitation.invitedBy);
+    const user = await User.findById(userId);
+    
     if (status === 'accepted') {
       // Add user to group members if not already a member
       const isAlreadyMember = group.currentMembers.some(
@@ -590,7 +727,6 @@ exports.respondToInvitation = async (req, res) => {
         });
         
         // Notify the user about successful join
-        const user = await User.findById(userId);
         if (user) {
           user.addNotification(
             'trip_update',
@@ -607,9 +743,27 @@ exports.respondToInvitation = async (req, res) => {
         }
       }
       
-      // Notify group creator
-      const user = await User.findById(userId);
+      // Notify group creator via email if they have email
       const creator = await User.findById(group.createdBy);
+      if (creator && creator.email) {
+        try {
+          await GroupEmailService.sendInvitationResponseEmail(
+            creator.email,
+            {
+              inviteeName: user ? user.name : 'Someone',
+              groupName: group.destination,
+              destination: group.destination,
+              status: 'accepted',
+              groupId: group._id
+            }
+          );
+          console.log(`📧 Sent acceptance notification to ${creator.email}`);
+        } catch (emailError) {
+          console.warn(`⚠️ Failed to send acceptance email to ${creator.email}:`, emailError.message);
+        }
+      }
+      
+      // Also send notification to group creator
       if (creator && user) {
         creator.addNotification(
           'trip_update',
@@ -627,9 +781,27 @@ exports.respondToInvitation = async (req, res) => {
       }
       
     } else if (status === 'declined') {
-      // Notify group creator
-      const user = await User.findById(userId);
+      // Notify group creator via email if they have email
       const creator = await User.findById(group.createdBy);
+      if (creator && creator.email) {
+        try {
+          await GroupEmailService.sendInvitationResponseEmail(
+            creator.email,
+            {
+              inviteeName: user ? user.name : 'Someone',
+              groupName: group.destination,
+              destination: group.destination,
+              status: 'declined',
+              groupId: group._id
+            }
+          );
+          console.log(`📧 Sent decline notification to ${creator.email}`);
+        } catch (emailError) {
+          console.warn(`⚠️ Failed to send decline email to ${creator.email}:`, emailError.message);
+        }
+      }
+      
+      // Also send notification to group creator
       if (creator && user) {
         creator.addNotification(
           'trip_update',

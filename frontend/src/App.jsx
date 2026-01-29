@@ -29,7 +29,7 @@ import InvitesPage from './pages/invites/InvitesPage';
 import InvitationDetails from './pages/invitations/InvitationDetails';
 import NearbyUsersPage from './pages/nearby/NearbyUsersPage';
 import SuggestTripPage from './pages/trips/SuggestTripPage';
-
+import ExpenseManagementPage from './pages/ExpenseManagementPage';
 
 
 // ✅ CORRECT IMPORTS - Fix the typo
@@ -99,6 +99,8 @@ function App() {
             <Route path="/edit-group/:id" element={<ProtectedRoute><EditGroupPage /></ProtectedRoute>} />
             
             <Route path="/nearby-users" element={<ProtectedRoute><NearbyUsersPage /></ProtectedRoute>} />
+
+            <Route path="/groups/:groupId/expenses" element={<ExpenseManagementPage />} />
             
             <Route path="/suggest-trip" element={<ProtectedRoute><SuggestTripPage /></ProtectedRoute>} />
             {/* ✅ FIX THIS ROUTE: Use InvitationResponse, not InvitationResponsePage */}

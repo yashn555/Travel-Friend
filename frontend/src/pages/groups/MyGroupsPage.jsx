@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { 
   getMyGroups, 
   deleteGroup, 
@@ -21,6 +21,13 @@ const MyGroupsPage = () => {
   const [requestsData, setRequestsData] = useState({});
   const [loadingMembers, setLoadingMembers] = useState({});
   const [loadingRequests, setLoadingRequests] = useState({});
+  
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // all, active, inactive
+  const [dateFilter, setDateFilter] = useState('all'); // all, upcoming, past
+  const [sortBy, setSortBy] = useState('newest'); // newest, oldest, name, members
+  const [memberFilter, setMemberFilter] = useState('all'); // all, full, available
 
   const fetchGroups = async () => {
     try {
@@ -53,6 +60,72 @@ const MyGroupsPage = () => {
     }
   };
 
+  // FIXED: Enhanced join requests fetching with proper API endpoint
+  const fetchJoinRequests = async (groupId) => {
+    try {
+      setLoadingRequests(prev => ({ ...prev, [groupId]: true }));
+      
+      // Try multiple approaches to fetch requests
+      let requests = [];
+      
+      // Approach 1: Try dedicated requests endpoint
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:5000/api/groups/${groupId}/requests`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && Array.isArray(data.data)) {
+            requests = data.data.filter(req => req.status === 'pending');
+            console.log(`✅ Fetched ${requests.length} pending requests from API for group ${groupId}`);
+          }
+        }
+      } catch (apiError) {
+        console.log('API endpoint failed, trying service...');
+      }
+      
+      // Approach 2: Use service function
+      if (requests.length === 0) {
+        try {
+          const response = await getPendingRequests(groupId);
+          
+          if (Array.isArray(response)) {
+            requests = response.filter(req => req.status === 'pending');
+          } else if (response && Array.isArray(response.requests)) {
+            requests = response.requests.filter(req => req.status === 'pending');
+          } else if (response && Array.isArray(response.data)) {
+            requests = response.data.filter(req => req.status === 'pending');
+          }
+        } catch (serviceError) {
+          console.error('Service error:', serviceError);
+        }
+      }
+      
+      // Approach 3: Check if requests are in group data
+      if (requests.length === 0 && groups.length > 0) {
+        const group = groups.find(g => g._id === groupId);
+        if (group && Array.isArray(group.joinRequests)) {
+          requests = group.joinRequests.filter(req => req.status === 'pending');
+        }
+      }
+      
+      console.log(`📊 Final requests for group ${groupId}:`, requests);
+      setRequestsData(prev => ({ ...prev, [groupId]: requests }));
+      
+    } catch (error) {
+      console.error('Error fetching join requests:', error);
+      toast.error('Failed to load join requests');
+      setRequestsData(prev => ({ ...prev, [groupId]: [] }));
+    } finally {
+      setLoadingRequests(prev => ({ ...prev, [groupId]: false }));
+    }
+  };
+
   const fetchGroupMembers = async (groupId) => {
     try {
       setLoadingMembers(prev => ({ ...prev, [groupId]: true }));
@@ -78,35 +151,105 @@ const MyGroupsPage = () => {
     }
   };
 
-  const fetchJoinRequests = async (groupId) => {
-    try {
-      setLoadingRequests(prev => ({ ...prev, [groupId]: true }));
-      const response = await getPendingRequests(groupId);
-      
-      let requests = [];
-      if (Array.isArray(response)) {
-        requests = response;
-      } else if (response && Array.isArray(response.requests)) {
-        requests = response.requests;
-      } else if (response && Array.isArray(response.data)) {
-        requests = response.data;
-      }
-      
-      setRequestsData(prev => ({ ...prev, [groupId]: requests }));
-    } catch (error) {
-      console.error('Error fetching join requests:', error);
-      toast.error('Failed to load join requests');
-      setRequestsData(prev => ({ ...prev, [groupId]: [] }));
-    } finally {
-      setLoadingRequests(prev => ({ ...prev, [groupId]: false }));
-    }
-  };
-
   useEffect(() => {
     if (user) {
       fetchGroups();
     }
   }, [user]);
+
+  // Filter and sort groups
+  const filteredAndSortedGroups = useMemo(() => {
+    let filtered = [...groups];
+
+    // Search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(group => 
+        group.destination?.toLowerCase().includes(term) ||
+        group.description?.toLowerCase().includes(term) ||
+        group.interests?.some(interest => interest.toLowerCase().includes(term))
+      );
+    }
+
+    // Status filter
+    if (statusFilter === 'active') {
+      filtered = filtered.filter(group => group.isActive === true);
+    } else if (statusFilter === 'inactive') {
+      filtered = filtered.filter(group => group.isActive === false);
+    }
+
+    // Date filter
+    const now = new Date();
+    if (dateFilter === 'upcoming') {
+      filtered = filtered.filter(group => new Date(group.startDate) > now);
+    } else if (dateFilter === 'past') {
+      filtered = filtered.filter(group => new Date(group.endDate) < now);
+    }
+
+    // Member capacity filter
+    if (memberFilter === 'full') {
+      filtered = filtered.filter(group => 
+        (group.currentMembers?.length || 0) >= (group.maxMembers || 10)
+      );
+    } else if (memberFilter === 'available') {
+      filtered = filtered.filter(group => 
+        (group.currentMembers?.length || 0) < (group.maxMembers || 10)
+      );
+    }
+
+    // Sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'newest':
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        case 'oldest':
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        case 'name':
+          return (a.destination || '').localeCompare(b.destination || '');
+        case 'members':
+          return (b.currentMembers?.length || 0) - (a.currentMembers?.length || 0);
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  }, [groups, searchTerm, statusFilter, dateFilter, sortBy, memberFilter]);
+
+  // Check if a trip is completed
+  const isTripCompleted = (group) => {
+    const endDate = new Date(group.endDate);
+    const now = new Date();
+    return endDate < now;
+  };
+
+  // Recreate a completed group
+  const handleRecreateGroup = async (originalGroup) => {
+    if (!window.confirm(`Recreate trip to "${originalGroup.destination}"? This will create a new trip with similar details.`)) {
+      return;
+    }
+
+    try {
+      // Navigate to create trip page with pre-filled data
+      navigate('/create-trip', {
+        state: {
+          prefillData: {
+            destination: originalGroup.destination,
+            description: `Recreated: ${originalGroup.description}`,
+            startDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            endDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            budgetMin: originalGroup.budget?.min || 1000,
+            budgetMax: originalGroup.budget?.max || 5000,
+            maxMembers: originalGroup.maxMembers || 10,
+            interests: originalGroup.interests || []
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error recreating group:', error);
+      toast.error('Failed to recreate group');
+    }
+  };
 
   const handleDeleteGroup = async (groupId, groupName) => {
     if (!window.confirm(`Are you sure you want to delete "${groupName}"?\n\nThis action will:\n• Remove the group permanently\n• Delete all group chats\n• Remove all members\n• Delete all join requests\n\nThis cannot be undone!`)) {
@@ -147,7 +290,6 @@ const MyGroupsPage = () => {
     }
 
     try {
-      // Use updateGroup to remove member
       const group = groups.find(g => g._id === groupId);
       if (!group) return;
       
@@ -158,7 +300,6 @@ const MyGroupsPage = () => {
       await updateGroup(groupId, { currentMembers: updatedMembers });
       toast.success(`Member "${memberName}" removed successfully!`);
       
-      // Update members data
       setMembersData(prev => ({
         ...prev,
         [groupId]: prev[groupId]?.filter(member => 
@@ -166,7 +307,6 @@ const MyGroupsPage = () => {
         ) || []
       }));
       
-      // Update groups list
       setGroups(prev => prev.map(g => 
         g._id === groupId 
           ? { ...g, currentMembers: updatedMembers }
@@ -190,13 +330,16 @@ const MyGroupsPage = () => {
         [groupId]: prev[groupId]?.filter(req => req._id !== requestId) || []
       }));
       
-      // Update group data
+      // Refresh members data
+      await fetchGroupMembers(groupId);
+      
+      // Update groups list
       setGroups(prev => prev.map(group => 
         group._id === groupId 
           ? { 
               ...group, 
               joinRequests: group.joinRequests?.filter(req => req._id !== requestId) || [],
-              currentMembers: [...(group.currentMembers || []), { _id: requestId }] // Add placeholder
+              currentMembers: [...(group.currentMembers || [])]
             } 
           : group
       ));
@@ -212,17 +355,14 @@ const MyGroupsPage = () => {
     }
 
     try {
-      // Use handleJoinRequest to reject
       await handleJoinRequest(groupId, requestId, 'rejected');
       toast.success(`Join request from "${userName}" rejected!`);
       
-      // Update requests data
       setRequestsData(prev => ({
         ...prev,
         [groupId]: prev[groupId]?.filter(req => req._id !== requestId) || []
       }));
       
-      // Update group data
       setGroups(prev => prev.map(group => 
         group._id === groupId 
           ? { 
@@ -245,9 +385,24 @@ const MyGroupsPage = () => {
       // Fetch detailed data when expanding
       await Promise.all([
         fetchGroupMembers(groupId),
-        fetchJoinRequests(groupId)
+        fetchJoinRequests(groupId)  // Fixed: This now uses the enhanced function
       ]);
     }
+  };
+
+  // Handle invite friends
+  const handleInviteFriends = (groupId) => {
+    console.log('🔄 Redirecting to:', `/groups/${groupId}/invite-friends`);
+    navigate(`/groups/${groupId}/invite-friends`);
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setDateFilter('all');
+    setSortBy('newest');
+    setMemberFilter('all');
   };
 
   if (loading) {
@@ -290,7 +445,102 @@ const MyGroupsPage = () => {
         </div>
       </div>
       
-      {groups.length === 0 ? (
+      {/* Filters Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-lg font-semibold text-gray-800">Filters & Sorting</h2>
+          <button
+            onClick={clearFilters}
+            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Clear Filters
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Search */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+            <input
+              type="text"
+              placeholder="Search groups..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          
+          {/* Status Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          
+          {/* Date Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Trip Date</label>
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">All Dates</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="past">Completed</option>
+            </select>
+          </div>
+          
+          {/* Member Capacity Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Capacity</label>
+            <select
+              value={memberFilter}
+              onChange={(e) => setMemberFilter(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">All Groups</option>
+              <option value="available">Has Available Slots</option>
+              <option value="full">Full</option>
+            </select>
+          </div>
+          
+          {/* Sort By */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="name">Name (A-Z)</option>
+              <option value="members">Most Members</option>
+            </select>
+          </div>
+        </div>
+        
+        {/* Results Summary */}
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <p className="text-sm text-gray-600">
+            Showing <span className="font-semibold">{filteredAndSortedGroups.length}</span> of <span className="font-semibold">{groups.length}</span> groups
+            {searchTerm && <span> matching "<span className="font-semibold">{searchTerm}</span>"</span>}
+          </p>
+        </div>
+      </div>
+      
+      {filteredAndSortedGroups.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="max-w-md mx-auto">
             <div className="text-gray-400 mb-6">
@@ -298,23 +548,39 @@ const MyGroupsPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-3">No Groups Created</h3>
+            <h3 className="text-xl font-semibold text-gray-700 mb-3">
+              {groups.length === 0 ? 'No Groups Created' : 'No Groups Match Filters'}
+            </h3>
             <p className="text-gray-500 mb-6">
-              You haven't created any groups yet. Start by creating your first trip!
+              {groups.length === 0 
+                ? "You haven't created any groups yet. Start by creating your first trip!"
+                : "Try adjusting your filters to find what you're looking for."
+              }
             </p>
             <div className="flex gap-4 justify-center">
-              <Link 
-                to="/create-trip" 
-                className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition duration-200"
-              >
-                Create Your First Group
-              </Link>
-              <Link 
-                to="/groups" 
-                className="bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-lg font-medium transition duration-200"
-              >
-                Browse Groups
-              </Link>
+              {groups.length === 0 ? (
+                <>
+                  <Link 
+                    to="/create-trip" 
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition duration-200"
+                  >
+                    Create Your First Group
+                  </Link>
+                  <Link 
+                    to="/groups" 
+                    className="bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-lg font-medium transition duration-200"
+                  >
+                    Browse Groups
+                  </Link>
+                </>
+              ) : (
+                <button
+                  onClick={clearFilters}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium transition duration-200"
+                >
+                  Clear All Filters
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -326,19 +592,22 @@ const MyGroupsPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-blue-700">
-                You have created <span className="font-bold">{groups.length}</span> group{groups.length !== 1 ? 's' : ''}. 
+                You have created <span className="font-bold">{filteredAndSortedGroups.length}</span> group{filteredAndSortedGroups.length !== 1 ? 's' : ''}. 
                 Click on any group to manage members, requests, and settings.
               </p>
             </div>
           </div>
           
           <div className="grid grid-cols-1 gap-6">
-            {groups.map(group => {
+            {filteredAndSortedGroups.map(group => {
               const memberCount = group.currentMembers?.length || 0;
+              const maxMembers = group.maxMembers || 10;
               const pendingRequests = group.joinRequests?.length || 0;
               const isExpanded = expandedGroup === group._id;
               const members = membersData[group._id] || [];
               const requests = requestsData[group._id] || [];
+              const isCompleted = isTripCompleted(group);
+              const isFull = memberCount >= maxMembers;
               
               return (
                 <div key={group._id} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden transition-all duration-300 hover:shadow-lg">
@@ -356,6 +625,16 @@ const MyGroupsPage = () => {
                           <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1 rounded-full">
                             Creator
                           </span>
+                          {isCompleted && (
+                            <span className="bg-gray-100 text-gray-800 text-xs font-semibold px-3 py-1 rounded-full">
+                              Completed
+                            </span>
+                          )}
+                          {isFull && (
+                            <span className="bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">
+                              Full
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-500">
                           Created on {new Date(group.createdAt).toLocaleDateString('en-US', { 
@@ -392,7 +671,7 @@ const MyGroupsPage = () => {
                           <span className="font-medium text-blue-800">Members</span>
                         </div>
                         <p className="text-2xl font-bold text-blue-600 mt-2">
-                          {memberCount}/{group.maxMembers || 10}
+                          {memberCount}/{maxMembers}
                         </p>
                       </div>
                       
@@ -404,7 +683,7 @@ const MyGroupsPage = () => {
                           <span className="font-medium text-yellow-800">Pending Requests</span>
                         </div>
                         <p className="text-2xl font-bold text-yellow-600 mt-2">
-                          {pendingRequests}
+                          {requests.length || pendingRequests}
                         </p>
                       </div>
                       
@@ -417,6 +696,7 @@ const MyGroupsPage = () => {
                         </div>
                         <p className="text-sm font-medium text-green-700 mt-2">
                           {new Date(group.startDate).toLocaleDateString()} - {new Date(group.endDate).toLocaleDateString()}
+                          {isCompleted && <span className="block text-xs text-gray-500">(Completed)</span>}
                         </p>
                       </div>
                     </div>
@@ -614,6 +894,16 @@ const MyGroupsPage = () => {
                           </Link>
                           
                           <button
+                            onClick={() => handleInviteFriends(group._id)}
+                            className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                            </svg>
+                            Invite Friends
+                          </button>
+                          
+                          <button
                             onClick={() => navigate(`/edit-group/${group._id}`)}
                             className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
                           >
@@ -636,6 +926,18 @@ const MyGroupsPage = () => {
                             </svg>
                             {group.isActive ? 'Deactivate Group' : 'Activate Group'}
                           </button>
+                          
+                          {isCompleted && (
+                            <button
+                              onClick={() => handleRecreateGroup(group)}
+                              className="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 rounded-lg font-medium transition duration-200 flex items-center gap-2"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Recreate Trip
+                            </button>
+                          )}
                           
                           <button
                             onClick={(e) => {
@@ -680,12 +982,26 @@ const MyGroupsPage = () => {
                           Chat
                         </Link>
                         <button
+                          onClick={() => handleInviteFriends(group._id)}
+                          className="bg-indigo-100 hover:bg-indigo-200 text-indigo-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm"
+                        >
+                          Invite
+                        </button>
+                        <button
                           onClick={() => navigate(`/edit-group/${group._id}`)}
                           className="bg-purple-100 hover:bg-purple-200 text-purple-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm"
                         >
                           Edit
                         </button>
-                        {pendingRequests > 0 && (
+                        {isCompleted && (
+                          <button
+                            onClick={() => handleRecreateGroup(group)}
+                            className="bg-teal-100 hover:bg-teal-200 text-teal-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm"
+                          >
+                            Recreate
+                          </button>
+                        )}
+                        {(requests.length > 0 || pendingRequests > 0) && (
                           <button
                             onClick={() => toggleGroupExpansion(group._id)}
                             className="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm flex items-center gap-1"
@@ -693,7 +1009,7 @@ const MyGroupsPage = () => {
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                             </svg>
-                            {pendingRequests} Requests
+                            {requests.length || pendingRequests} Requests
                           </button>
                         )}
                       </div>

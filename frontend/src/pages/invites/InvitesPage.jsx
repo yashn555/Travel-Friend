@@ -525,7 +525,7 @@ const InvitesPage = () => {
                             
                             <div className="mt-4 pt-4 border-t border-gray-200">
                               <Link
-                                to={`/invitations/${invitation.invitationId}/respond`}
+to={`/groups/${invitation.groupId}`}
                                 className="w-full py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-50 flex items-center justify-center gap-2 transition-colors"
                               >
                                 <FaExternalLinkAlt />

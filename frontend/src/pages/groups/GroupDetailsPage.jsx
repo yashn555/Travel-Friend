@@ -153,6 +153,7 @@ const GroupDetailsPage = () => {
       {/* Main Content with Tabs */}
       <GroupTabs 
         group={group}
+        groupId={group?._id}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isCreator={isCreator}

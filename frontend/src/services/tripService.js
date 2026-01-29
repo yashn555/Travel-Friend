@@ -1,12 +1,35 @@
-// frontend/src/services/tripService.js
 import api from './api';
 
-// Helper function to get auth token
-export const getAuthToken = () => {
-  return localStorage.getItem('token');
+// ==================== GROUP FUNCTIONS ====================
+
+export const getGroupById = async (groupId) => {
+  try {
+    const response = await api.get(`/trips/${groupId}`);
+    console.log('✅ Get group by ID API response:', response);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Get group by ID API error:', error);
+    throw new Error(error.response?.data?.message || 'Failed to fetch group');
+  }
 };
 
-// AI Trip Planning
+// Add updateGroup function
+export const updateGroup = async (groupId, updateData) => {
+  try {
+    const response = await api.put(`/trips/${groupId}`, updateData);
+    console.log('✅ Update group API response:', response);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Update group API error:', error);
+    throw new Error(error.response?.data?.message || 'Failed to update group');
+  }
+};
+
+// Alias for getGroup (for compatibility)
+export const getGroup = getGroupById;
+
+// ==================== AI TRIP PLANNING ====================
+
 export const generateTripPlan = async (groupId, prompt = '') => {
   try {
     const response = await api.post('/trips/plan', { groupId, prompt });
@@ -15,7 +38,6 @@ export const generateTripPlan = async (groupId, prompt = '') => {
   } catch (error) {
     console.error('❌ Generate trip plan API error:', error);
     
-    // Handle specific error cases
     if (error.response?.data?.message?.includes('Gemini API')) {
       throw {
         ...error,
@@ -55,7 +77,8 @@ export const updateTripPlan = async (groupId, plan) => {
   }
 };
 
-// Group Booking
+// ==================== GROUP BOOKING ====================
+
 export const createGroupBooking = async (bookingData) => {
   try {
     const response = await api.post('/trips/booking', bookingData);
@@ -78,55 +101,6 @@ export const getGroupBookings = async (groupId) => {
   }
 };
 
-// Expense Management
-export const addExpense = async (expenseData) => {
-  try {
-    const response = await api.post('/trips/expenses', expenseData);
-    console.log('✅ Add expense API response:', response);
-    return response.data;
-  } catch (error) {
-    console.error('❌ Add expense API error:', error);
-    throw error;
-  }
-};
-
-export const getExpenses = async (groupId) => {
-  try {
-    const response = await api.get(`/trips/expenses/${groupId}`);
-    console.log('✅ Get expenses API response:', response);
-    return response.data;
-  } catch (error) {
-    console.error('❌ Get expenses API error:', error);
-    throw error;
-  }
-};
-
-export const deleteExpense = async (expenseId) => {
-  try {
-    const response = await api.delete(`/trips/expenses/${expenseId}`);
-    console.log('✅ Delete expense API response:', response);
-    return response.data;
-  } catch (error) {
-    console.error('❌ Delete expense API error:', error);
-    throw error;
-  }
-};
-
-// Route Suggestions - UPDATED: Now handles real-time data only
-export const getRouteSuggestions = async (groupId) => {
-  try {
-    const response = await api.get(`/trips/routes/${groupId}`);
-    console.log('✅ Get route suggestions API response:', response);
-    return response.data;
-  } catch (error) {
-    console.error('❌ Get route suggestions API error:', error);
-    
-    // Don't throw fallback data, throw the actual error
-    throw error;
-  }
-};
-
-// Update booking status
 export const updateBookingStatus = async (bookingId, status) => {
   try {
     const response = await api.put(`/trips/booking/${bookingId}`, { status });
@@ -137,3 +111,25 @@ export const updateBookingStatus = async (bookingId, status) => {
     throw error;
   }
 };
+
+// ==================== ROUTE SUGGESTIONS ====================
+
+export const getRouteSuggestions = async (groupId) => {
+  try {
+    const response = await api.get(`/trips/routes/${groupId}`);
+    console.log('✅ Get route suggestions API response:', response);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Get route suggestions API error:', error);
+    throw error;
+  }
+};
+
+// ==================== HELPER FUNCTIONS ====================
+
+export const getAuthToken = () => {
+  return localStorage.getItem('token');
+};
+
+// REMOVE ALL EXPENSE FUNCTIONS FROM HERE
+// They will be moved to expenseService.js

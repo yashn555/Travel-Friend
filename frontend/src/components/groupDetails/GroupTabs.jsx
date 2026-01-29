@@ -1,4 +1,4 @@
-// frontend/src/components/groupDetails/GroupTabs.jsx
+// frontend/src/components/groupDetails/GroupTabs.jsx - FIXED
 import React from 'react';
 import { FaInfoCircle, FaRobot, FaHotel, FaMoneyBillWave, FaRoute } from 'react-icons/fa';
 import OverviewTab from './OverviewTab';

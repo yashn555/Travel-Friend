@@ -811,33 +811,49 @@ exports.getMyCreatedGroups = async (req, res) => {
 // Update group
 exports.updateGroup = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { groupId } = req.params; // ✅ Use groupId from params
     const updates = req.body;
     
+    console.log('🔧 UPDATE GROUP DEBUG START ==========');
+    console.log('Group ID from params:', groupId);
+    console.log('User ID:', req.user?.id);
+    console.log('Updates:', updates);
+    
     // Find group
-    const group = await Group.findById(id);
+    const group = await Group.findById(groupId);
     
     if (!group) {
+      console.log('❌ Group not found for ID:', groupId);
       return res.status(404).json({
         success: false,
         message: 'Group not found'
       });
     }
     
+    console.log('✅ Group found:', group.destination);
+    console.log('Group owner:', group.createdBy.toString());
+    console.log('Request user:', req.user.id);
+    
     // Check if user is the creator
     if (group.createdBy.toString() !== req.user.id) {
+      console.log('❌ User is not the creator');
       return res.status(403).json({
         success: false,
         message: 'Not authorized to edit this group'
       });
     }
     
-    // Update group
+    console.log('✅ User authorized. Updating...');
+    
+    // ✅ Use groupId, not id
     const updatedGroup = await Group.findByIdAndUpdate(
-      id,
+      groupId, // ✅ Correct variable name
       updates,
       { new: true, runValidators: true }
     ).populate('createdBy', 'name email');
+    
+    console.log('✅ Group updated successfully');
+    console.log('🔧 UPDATE GROUP DEBUG END ==========');
     
     res.status(200).json({
       success: true,
@@ -846,7 +862,8 @@ exports.updateGroup = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Update group error:', error);
+    console.error('❌ Update group error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to update group',

@@ -7,88 +7,128 @@ const axios = require('axios');
 
 // Helper function to call Gemini API
 // In generateGeminiJSON function, update the API endpoint:
+
 const generateGeminiJSON = async (aiPrompt) => {
   try {
     // Check if API key is available
     if (!process.env.GEMINI_API_KEY) {
+      console.error('❌ Gemini API key is not configured in .env file');
       throw new Error('Gemini API key is not configured');
     }
 
-    // UPDATED: Correct Gemini API endpoint for gemini-1.5-pro
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{
-            text: aiPrompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topP: 0.8,
-          topK: 40,
-          maxOutputTokens: 2048,
+    console.log('🔑 Using Gemini API Key');
+    console.log('📝 Prompt length:', aiPrompt.length);
+
+    // CORRECTED: Use the working model endpoint
+    // Try different model endpoints in order
+    const modelEndpoints = [
+      'gemini-1.5-pro-latest',  // Latest 1.5 Pro
+      'gemini-1.5-pro',         // Standard 1.5 Pro
+      'gemini-pro',             // Standard Gemini Pro
+      'gemini-1.0-pro'          // Legacy 1.0 Pro
+    ];
+
+    let lastError = null;
+    
+    for (const modelName of modelEndpoints) {
+      try {
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+        
+        console.log(`🔄 Trying model: ${modelName}`);
+        console.log(`🌐 API URL (masked): https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=****`);
+
+        const response = await axios.post(
+          apiUrl,
+          {
+            contents: [{
+              parts: [{
+                text: aiPrompt
+              }]
+            }],
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.8,
+              maxOutputTokens: 2048,
+            }
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000
+          }
+        );
+
+        console.log(`✅ Success with model: ${modelName}`);
+        console.log('✅ Response status:', response.status);
+
+        if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
+          console.log('❌ No valid response from Gemini API');
+          continue; // Try next model
         }
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
+
+        const aiResponse = response.data.candidates[0].content.parts[0].text;
+        console.log('📄 AI Response sample:', aiResponse.substring(0, 200) + '...');
+
+        // Clean and parse JSON
+        let cleanedResponse = aiResponse
+          .replace(/```json\s*/g, '')
+          .replace(/\s*```/g, '')
+          .replace(/```/g, '')
+          .trim();
+
+        // Extract JSON if wrapped
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          cleanedResponse = jsonMatch[0];
+        }
+
+        try {
+          const parsedData = JSON.parse(cleanedResponse);
+          console.log('✅ JSON parsed successfully');
+          return parsedData;
+        } catch (parseError) {
+          console.error('❌ JSON parse failed:', parseError.message);
+          // Try to fix common JSON issues
+          try {
+            // Remove trailing commas
+            const fixedJson = cleanedResponse.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+            const parsedData = JSON.parse(fixedJson);
+            console.log('✅ JSON parsed after fixing');
+            return parsedData;
+          } catch (secondError) {
+            console.error('❌ Still failed to parse JSON');
+            // Create a fallback response
+            return createFallbackResponse(aiResponse, modelName);
+          }
+        }
+
+      } catch (modelError) {
+        lastError = modelError;
+        console.log(`❌ Model ${modelName} failed:`, modelError.message);
+        // Continue to next model
+        continue;
       }
-    );
-    
-    console.log('Gemini API Response Status:', response.status);
-    
-    if (!response.data.candidates || !response.data.candidates[0]) {
-      console.log('Gemini API Response Data:', JSON.stringify(response.data, null, 2));
-      throw new Error('No valid response from Gemini API');
     }
-    
-    const aiResponse = response.data.candidates[0].content.parts[0].text;
-    console.log('Gemini AI Response (first 500 chars):', aiResponse.substring(0, 500) + '...');
-    
-    // Parse JSON from response
-    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('No JSON found in response. Full response:', aiResponse);
-      throw new Error('No JSON found in AI response');
-    }
-    
-    try {
-      const parsedData = JSON.parse(jsonMatch[0]);
-      console.log('Parsed JSON successfully');
-      return parsedData;
-    } catch (parseError) {
-      console.error('JSON Parse Error:', parseError);
-      console.error('JSON String:', jsonMatch[0]);
-      throw new Error('Failed to parse AI response as JSON');
-    }
-    
+
+    // If all models failed
+    console.error('❌ All Gemini models failed');
+    throw lastError || new Error('All Gemini models failed');
+
   } catch (error) {
-    console.error('Gemini API Error Details:', {
+    console.error('❌ Gemini API Error:', {
       message: error.message,
       status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      url: error.config?.url
+      url: error.config?.url?.replace(process.env.GEMINI_API_KEY, '****')
     });
-    
+
     if (error.response?.status === 404) {
-      throw new Error('Gemini API endpoint not found. Please check the API model name.');
-    }
-    
-    if (error.response?.status === 400) {
-      throw new Error('Invalid request to Gemini API. Check API key and parameters.');
+      throw new Error(`Gemini API model not found. Please check available models at: http://localhost:5000/api/test/list-models`);
     }
     
     if (error.response?.status === 403) {
-      throw new Error('Gemini API access forbidden. Check API key permissions.');
-    }
-    
-    // If API key is invalid or missing
-    if (error.message.includes('API key not valid')) {
-      throw new Error('Invalid Gemini API key. Please check your GEMINI_API_KEY in .env file');
+      throw new Error('Gemini API access forbidden. Please check your API key permissions.');
     }
     
     throw new Error(`Gemini API failed: ${error.message}`);

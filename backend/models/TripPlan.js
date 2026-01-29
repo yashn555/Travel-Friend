@@ -1,36 +1,12 @@
 // backend/models/TripPlan.js
 const mongoose = require('mongoose');
 
-const activitySchema = new mongoose.Schema({
-  time: String,
-  activity: String,
-  duration: String
-}, { _id: false });
-
-const dayPlanSchema = new mongoose.Schema({
-  day: Number,
-  date: Date,
-  activities: [activitySchema],
-  accommodation: String,
-  meals: String,
-  estimatedCost: Number
-}, { _id: false });
-
-const recommendationsSchema = new mongoose.Schema({
-  hotels: [String],
-  transport: String,
-  bestSeason: String,
-  weather: String,
-  mustVisit: [String],
-  tips: [String]
-}, { _id: false });
-
 const tripPlanSchema = new mongoose.Schema({
   group: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Group',
     required: true,
-    unique: true
+    unique: true // Only one trip plan per group
   },
   destination: {
     type: String,
@@ -41,51 +17,42 @@ const tripPlanSchema = new mongoose.Schema({
   groupSize: Number,
   budget: {
     min: Number,
-    max: Number,
-    currency: String
+    max: Number
   },
-  preferences: mongoose.Schema.Types.Mixed,
+  preferences: {
+    type: Object,
+    default: {}
+  },
   plan: {
-    itinerary: [dayPlanSchema],
-    totalEstimatedCost: Number,
-    costPerPerson: Number,
-    recommendations: recommendationsSchema,
-    durationDays: Number,
-    season: String
+    type: Object,
+    required: true
   },
   generatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  lastModifiedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
   promptUsed: String,
-  isActive: {
+  aiGenerated: {
     type: Boolean,
     default: true
+  },
+  aiProvider: {
+    type: String,
+    default: 'Google Gemini'
+  },
+  status: {
+    type: String,
+    enum: ['generated', 'modified', 'confirmed'],
+    default: 'generated'
   }
 }, {
   timestamps: true
 });
 
-// Indexes for faster queries
 tripPlanSchema.index({ group: 1 });
 tripPlanSchema.index({ generatedBy: 1 });
-tripPlanSchema.index({ destination: 1 });
-tripPlanSchema.index({ isActive: 1 });
-
-// Add a method to get formatted data
-tripPlanSchema.methods.getFormattedPlan = function() {
-  return {
-    ...this.plan,
-    generatedAt: this.createdAt,
-    lastUpdated: this.updatedAt,
-    generatedBy: this.generatedBy
-  };
-};
+tripPlanSchema.index({ createdAt: -1 });
 
 const TripPlan = mongoose.model('TripPlan', tripPlanSchema);
 

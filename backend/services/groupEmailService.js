@@ -1,32 +1,114 @@
 // backend/services/groupEmailService.js
 const nodemailer = require('nodemailer');
-const User = require('../models/User');
-const Group = require('../models/Group');
 
 class GroupEmailService {
   constructor() {
-    this.transporter = nodemailer.createTransport({
+    console.log('📧 Initializing GroupEmailService...');
+    
+    // DEBUG: Log email configuration
+    const emailConfig = {
       host: process.env.EMAIL_HOST,
       port: process.env.EMAIL_PORT,
       secure: process.env.EMAIL_SECURE === 'true',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD
-      }
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,  // USING YOUR VARIABLE NAME
+      hasPassword: !!process.env.EMAIL_PASS,
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USER
+    };
+    
+    console.log('🔧 Email Config Check:', {
+      host: emailConfig.host,
+      port: emailConfig.port,
+      secure: emailConfig.secure,
+      user: emailConfig.user,
+      hasPassword: emailConfig.hasPassword,
+      passwordLength: emailConfig.pass ? emailConfig.pass.length : 0
     });
+    
+    if (!emailConfig.pass) {
+      console.error('❌ EMAIL_PASS is missing in environment variables!');
+    }
+    
+    try {
+      this.transporter = nodemailer.createTransport({
+        host: process.env.EMAIL_HOST,
+        port: process.env.EMAIL_PORT,
+        secure: process.env.EMAIL_SECURE === 'true',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS  // USING YOUR VARIABLE NAME
+        },
+        pool: true,
+        maxConnections: 5,
+        maxMessages: 100,
+        // For debugging
+        logger: true,
+        debug: true,
+        // Additional security for Gmail
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+
+      // Verify connection configuration
+      this.transporter.verify(function(error, success) {
+        if (error) {
+          console.error('❌ Email transporter verification failed:', error.message);
+          console.error('❌ Check if EMAIL_PASS is correct in .env file');
+        } else {
+          console.log('✅ Email transporter is ready to send messages');
+        }
+      });
+    } catch (error) {
+      console.error('❌ Failed to create email transporter:', error.message);
+    }
   }
 
   async sendGroupInvitationEmail(recipientEmail, invitationData) {
+    console.log('📧 [sendGroupInvitationEmail] Starting...');
+    console.log('📋 Recipient:', recipientEmail);
+    console.log('📋 Data keys:', Object.keys(invitationData));
+    
     try {
-      const { inviterName, groupName, destination, startDate, endDate, invitationId, customMessage, maxMembers, currentMembers } = invitationData;
+      const { 
+        inviterName, 
+        groupName, 
+        destination, 
+        startDate, 
+        endDate, 
+        invitationId, 
+        groupId,
+        customMessage, 
+        maxMembers, 
+        currentMembers 
+      } = invitationData;
+      
+      // Validate required fields
+      if (!invitationId || !groupId) {
+        console.error('❌ Missing invitationId or groupId');
+        return { success: false, error: 'Missing required invitation data' };
+      }
+      
+      // Validate email address
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(recipientEmail)) {
+        console.error('❌ Invalid email format:', recipientEmail);
+        return { success: false, error: 'Invalid email address' };
+      }
       
       const invitationLink = `${process.env.FRONTEND_URL}/invitations/${invitationId}/respond`;
-      const tripPreviewLink = `${process.env.FRONTEND_URL}/groups/preview/${invitationData.groupId}`;
+      const tripPreviewLink = `${process.env.FRONTEND_URL}/groups/${groupId}`;
+      
+      console.log('🔗 Generated links:', { 
+        invitationLink, 
+        tripPreviewLink,
+        frontendUrl: process.env.FRONTEND_URL
+      });
       
       const mailOptions = {
-        from: `"TravelBuddy ✈️" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+        from: `"Travel-Friend ✈️" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
         to: recipientEmail,
-        subject: `🎉 ${inviterName} invited you to join ${destination} trip!`,
+        subject: `🎉 ${inviterName} invited you to join "${destination}" trip!`,
         html: `
           <!DOCTYPE html>
           <html>
@@ -35,136 +117,13 @@ class GroupEmailService {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Trip Invitation</title>
             <style>
-              body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                margin: 0;
-                padding: 0;
-                background-color: #f5f7fa;
-              }
-              .container {
-                max-width: 600px;
-                margin: 0 auto;
-                background: white;
-                border-radius: 12px;
-                overflow: hidden;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-              }
-              .header {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                padding: 40px 30px;
-                text-align: center;
-              }
-              .header h1 {
-                margin: 0;
-                font-size: 28px;
-                font-weight: 600;
-              }
-              .header p {
-                margin: 10px 0 0;
-                opacity: 0.9;
-                font-size: 16px;
-              }
-              .content {
-                padding: 40px 30px;
-              }
-              .trip-card {
-                background: linear-gradient(135deg, #f6f9ff 0%, #f0f4ff 100%);
-                border-radius: 10px;
-                padding: 25px;
-                margin: 25px 0;
-                border-left: 4px solid #667eea;
-              }
-              .trip-card h2 {
-                color: #2d3748;
-                margin: 0 0 15px 0;
-                font-size: 22px;
-              }
-              .trip-details {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 15px;
-                margin-top: 20px;
-              }
-              .detail-item {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                color: #4a5568;
-              }
-              .detail-icon {
-                color: #667eea;
-                font-size: 18px;
-              }
-              .custom-message {
-                background: #fff8e1;
-                border-radius: 8px;
-                padding: 20px;
-                margin: 25px 0;
-                border-left: 4px solid #ffb300;
-              }
-              .action-buttons {
-                text-align: center;
-                margin: 30px 0;
-              }
-              .btn {
-                display: inline-block;
-                padding: 14px 32px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: 600;
-                font-size: 16px;
-                transition: transform 0.2s, box-shadow 0.2s;
-              }
-              .btn:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
-              }
-              .secondary-btn {
-                display: inline-block;
-                padding: 12px 24px;
-                border: 2px solid #667eea;
-                color: #667eea;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: 600;
-                margin-left: 15px;
-              }
-              .footer {
-                text-align: center;
-                padding: 25px;
-                background: #f8f9fa;
-                color: #718096;
-                font-size: 14px;
-              }
-              .footer-links {
-                margin-top: 15px;
-              }
-              .footer-links a {
-                color: #667eea;
-                text-decoration: none;
-                margin: 0 10px;
-              }
-              @media (max-width: 600px) {
-                .container {
-                  border-radius: 0;
-                }
-                .header {
-                  padding: 30px 20px;
-                }
-                .content {
-                  padding: 30px 20px;
-                }
-                .btn, .secondary-btn {
-                  display: block;
-                  width: 100%;
-                  margin: 10px 0;
-                }
-              }
+              /* Email styles here - same as before */
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; }
+              .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+              .content { padding: 30px; }
+              .trip-info { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+              .btn { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 10px; }
             </style>
           </head>
           <body>
@@ -173,79 +132,121 @@ class GroupEmailService {
                 <h1>✈️ Trip Invitation</h1>
                 <p>${inviterName} invited you to join their adventure!</p>
               </div>
-              
               <div class="content">
-                <p style="color: #4a5568; font-size: 16px; margin-bottom: 20px;">
-                  Hello! You've been invited to join a trip group on TravelBuddy. Here are the details:
-                </p>
+                <p>Hello!</p>
+                <p>You've been invited to join a trip group on Travel-Friend. Here are the details:</p>
                 
-                <div class="trip-card">
+                <div class="trip-info">
                   <h2>${destination}</h2>
-                  <div class="trip-details">
-                    <div class="detail-item">
-                      <span class="detail-icon">📅</span>
-                      <span><strong>Dates:</strong> ${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}</span>
-                    </div>
-                    <div class="detail-item">
-                      <span class="detail-icon">👥</span>
-                      <span><strong>Group Size:</strong> ${currentMembers || 1}/${maxMembers || 10} members</span>
-                    </div>
-                    <div class="detail-item">
-                      <span class="detail-icon">🎯</span>
-                      <span><strong>Trip:</strong> ${groupName}</span>
-                    </div>
-                  </div>
+                  <p><strong>Trip:</strong> ${groupName}</p>
+                  <p><strong>Dates:</strong> ${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}</p>
+                  <p><strong>Group Size:</strong> ${currentMembers || 1}/${maxMembers || 10} members</p>
                 </div>
                 
                 ${customMessage ? `
-                <div class="custom-message">
+                <div style="background: #fff8e1; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffb300;">
                   <strong>💌 Personal Message from ${inviterName}:</strong>
                   <p style="margin: 10px 0 0; color: #5d4037;">"${customMessage}"</p>
                 </div>
                 ` : ''}
                 
-                <div class="action-buttons">
+                <div style="text-align: center; margin: 30px 0;">
                   <a href="${invitationLink}" class="btn">View Invitation & Respond</a>
-                  <a href="${tripPreviewLink}" class="secondary-btn">Preview Trip Details</a>
+                  <br>
+                  <a href="${tripPreviewLink}" style="color: #667eea; margin-top: 10px; display: inline-block;">Preview Trip Details</a>
                 </div>
                 
                 <div style="text-align: center; margin-top: 30px; color: #718096; font-size: 14px;">
                   <p>This invitation will expire in 7 days.</p>
-                  <p>Need help? Contact our support team at support@travelbuddy.com</p>
-                </div>
-              </div>
-              
-              <div class="footer">
-                <p>© ${new Date().getFullYear()} TravelBuddy. All rights reserved.</p>
-                <div class="footer-links">
-                  <a href="${process.env.FRONTEND_URL}">Visit Website</a>
-                  <a href="${process.env.FRONTEND_URL}/privacy">Privacy Policy</a>
-                  <a href="${process.env.FRONTEND_URL}/terms">Terms of Service</a>
+                  <p>Need help? Contact our support team</p>
                 </div>
               </div>
             </div>
           </body>
           </html>
+        `,
+        // Text version for email clients that don't support HTML
+        text: `
+          Trip Invitation from ${inviterName}
+          
+          You've been invited to join "${destination}" trip!
+          
+          Trip: ${groupName}
+          Dates: ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}
+          Group: ${currentMembers || 1}/${maxMembers || 10} members
+          
+          ${customMessage ? `Personal message from ${inviterName}: "${customMessage}"` : ''}
+          
+          Click here to respond: ${invitationLink}
+          Preview trip: ${tripPreviewLink}
+          
+          This invitation expires in 7 days.
+          
+          Travel-Friend Team
         `
       };
 
+      console.log('📤 Sending email to:', recipientEmail);
+      console.log('📤 From:', mailOptions.from);
+      console.log('📤 Subject:', mailOptions.subject);
+      
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(`📧 Group invitation email sent to ${recipientEmail}: ${info.messageId}`);
-      return { success: true, messageId: info.messageId };
+      
+      console.log('✅ Email sent successfully!');
+      console.log('📨 Message ID:', info.messageId);
+      console.log('👤 Accepted recipients:', info.accepted);
+      
+      return { 
+        success: true, 
+        messageId: info.messageId,
+        accepted: info.accepted,
+        emailSent: true
+      };
+      
     } catch (error) {
-      console.error('❌ Error sending group invitation email:', error);
-      return { success: false, error: error.message };
+      console.error('❌ Error sending group invitation email:', error.message);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error command:', error.command);
+      
+      // Detailed error analysis
+      if (error.code === 'EAUTH') {
+        console.error('❌ Authentication failed!');
+        console.error('❌ Check if:');
+        console.error('   1. EMAIL_USER is correct');
+        console.error('   2. EMAIL_PASS is correct (app password for Gmail)');
+        console.error('   3. 2-Step Verification is enabled in Google account');
+      } else if (error.code === 'ECONNECTION') {
+        console.error('❌ Connection failed! Check network/firewall.');
+      }
+      
+      return { 
+        success: false, 
+        error: error.message,
+        emailSent: false,
+        details: {
+          code: error.code,
+          command: error.command
+        }
+      };
     }
   }
 
   async sendInvitationResponseEmail(inviterEmail, responseData) {
+    console.log('📧 [sendInvitationResponseEmail] Starting...');
+    console.log('📋 Recipient:', inviterEmail);
+    
     try {
-      const { inviteeName, groupName, destination, status } = responseData;
+      const { inviteeName, groupName, destination, status, groupId } = responseData;
       
-      const groupLink = `${process.env.FRONTEND_URL}/groups/${responseData.groupId}`;
+      if (!inviterEmail) {
+        console.error('❌ No inviter email provided');
+        return { success: false, error: 'No inviter email' };
+      }
+      
+      const groupLink = `${process.env.FRONTEND_URL}/groups/${groupId}`;
       
       const mailOptions = {
-        from: `"TravelBuddy ✈️" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+        from: `"Travel-Friend ✈️" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
         to: inviterEmail,
         subject: `${status === 'accepted' ? '✅' : '❌'} ${inviteeName} ${status === 'accepted' ? 'accepted' : 'declined'} your trip invitation`,
         html: `
@@ -272,9 +273,11 @@ class GroupEmailService {
                   <h3 style="margin: 0; color: #2d3748;">${destination}</h3>
                   <p style="margin: 5px 0; color: #4a5568;">${groupName}</p>
                 </div>
+                ${status === 'accepted' ? `
                 <div style="text-align: center; margin-top: 30px;">
                   <a href="${groupLink}" class="btn">View Trip Group</a>
                 </div>
+                ` : ''}
               </div>
             </div>
           </body>
@@ -283,11 +286,12 @@ class GroupEmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(`📧 Invitation response email sent to ${inviterEmail}`);
-      return { success: true, messageId: info.messageId };
+      console.log(`📧 Response email sent to ${inviterEmail}`);
+      return { success: true, messageId: info.messageId, emailSent: true };
+      
     } catch (error) {
-      console.error('❌ Error sending response email:', error);
-      return { success: false, error: error.message };
+      console.error('❌ Error sending response email:', error.message);
+      return { success: false, error: error.message, emailSent: false };
     }
   }
 }
