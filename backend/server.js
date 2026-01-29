@@ -16,7 +16,7 @@ const groupRoutes = require('./routes/groupRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const tripRoutes = require('./routes/tripRoutes');
 const userRoutes = require('./routes/userRoutes');
-const privateChatRoutes = require('./routes/privateChatRoutes'); // ADD THIS LINE
+const privateChatRoutes = require('./routes/privateChatRoutes');
 const matchRoutes = require('./routes/matchRoutes');
 const inviteRoutes = require('./routes/inviteRoutes');
 const groupNotificationRoutes = require('./routes/groupNotificationRoutes');
@@ -27,20 +27,23 @@ const autoTripRoutes = require('./routes/autoTripRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const { initAutoComplete } = require('./utils/autoCompleteTrips');
 
-
 // Initialize express
 const app = express();
 const server = http.createServer(app);
 const io = socketio(server, {
   cors: {
-    origin: 'http://localhost:3000',
+    origin: process.env.NODE_ENV === 'production' 
+      ? process.env.FRONTEND_URL || 'http://localhost:3000'
+      : 'http://localhost:3000',
     credentials: true
   }
 });
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: process.env.NODE_ENV === 'production'
+    ? process.env.FRONTEND_URL || 'http://localhost:3000'
+    : 'http://localhost:3000',
   credentials: true
 }));
 app.use(express.json());
@@ -64,7 +67,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/trips', tripRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/private-chat', privateChatRoutes); // ADD THIS LINE
+app.use('/api/private-chat', privateChatRoutes);
 app.use('/api/match', matchRoutes);
 app.use('/api/invite', inviteRoutes);
 app.use('/api/notifications/group', groupNotificationRoutes);
@@ -79,7 +82,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     message: 'Server is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
@@ -133,11 +137,44 @@ const connectDB = async () => {
       throw new Error('MONGO_URI is not defined in .env file');
     }
 
-    await mongoose.connect(process.env.MONGO_URI);
+    // Check if MongoDB URI is pointing to localhost in production
+    if (process.env.NODE_ENV === 'production' && process.env.MONGO_URI.includes('localhost')) {
+      console.warn('⚠️  Warning: MONGO_URI contains localhost in production environment');
+    }
+
+    console.log(`🔗 Attempting to connect to MongoDB...`);
+    
+    // Configure mongoose connection options
+    const mongooseOptions = {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 30000, // 30 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+    };
+
+    await mongoose.connect(process.env.MONGO_URI, mongooseOptions);
     console.log('✅ MongoDB Connected');
+    
+    // Initialize auto-complete system AFTER successful DB connection
+    initAutoComplete();
+    
+    return mongoose.connection;
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
-    process.exit(1);
+    
+    // Provide helpful error messages
+    if (error.message.includes('ECONNREFUSED')) {
+      console.error('💡 Tip: Make sure your MongoDB server is running and accessible');
+      console.error('💡 For Render.com, use MongoDB Atlas or Render\'s own MongoDB service');
+    } else if (error.message.includes('authentication failed')) {
+      console.error('💡 Tip: Check your MongoDB username and password');
+    }
+    
+    // Don't exit immediately in production, let the health check show the status
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
+    
+    throw error;
   }
 };
 
@@ -145,18 +182,45 @@ const connectDB = async () => {
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-  await connectDB();
-
-  server.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
-    console.log(`🌐 API URL: http://localhost:${PORT}/api`);
-    console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
-  });
+  try {
+    await connectDB();
+    
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
+      console.log(`🌐 API URL: http://localhost:${PORT}/api`);
+      console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
+      console.log(`📊 Database: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error.message);
+    
+    // Even if DB fails, start server in production for health checks
+    if (process.env.NODE_ENV === 'production') {
+      server.listen(PORT, () => {
+        console.log(`⚠️  Server started without database connection on port ${PORT}`);
+        console.log(`💡 Health check will show database as disconnected`);
+      });
+    } else {
+      process.exit(1);
+    }
+  }
 };
-initAutoComplete();
+
 startServer();
 
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Rejection:', err.message);
   console.error(err.stack);
+});
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received. Shutting down gracefully...');
+  server.close(() => {
+    console.log('👋 HTTP server closed');
+    mongoose.connection.close(false, () => {
+      console.log('👋 MongoDB connection closed');
+      process.exit(0);
+    });
+  });
 });
