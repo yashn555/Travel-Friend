@@ -27,7 +27,7 @@ const autoTripRoutes = require('./routes/autoTripRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const { initAutoComplete } = require('./utils/autoCompleteTrips');
 
-initAutoComplete();
+
 // Initialize express
 const app = express();
 const server = http.createServer(app);
@@ -153,7 +153,7 @@ const startServer = async () => {
     console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
   });
 };
-
+initAutoComplete();
 startServer();
 
 process.on('unhandledRejection', (err) => {
