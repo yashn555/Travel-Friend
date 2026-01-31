@@ -5,69 +5,69 @@ class GroupEmailService {
   constructor() {
     console.log('📧 Initializing GroupEmailService...');
     
-    // DEBUG: Log email configuration
-    const emailConfig = {
-      host: process.env.EMAIL_HOST,
-      port: process.env.EMAIL_PORT,
-      secure: process.env.EMAIL_SECURE === 'true',
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,  // USING YOUR VARIABLE NAME
-      hasPassword: !!process.env.EMAIL_PASS,
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER
-    };
+    // Use Gmail instead of SMTP
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
     
     console.log('🔧 Email Config Check:', {
-      host: emailConfig.host,
-      port: emailConfig.port,
-      secure: emailConfig.secure,
-      user: emailConfig.user,
-      hasPassword: emailConfig.hasPassword,
-      passwordLength: emailConfig.pass ? emailConfig.pass.length : 0
+      user: emailUser ? emailUser.substring(0, 3) + '***' : 'Not set',
+      hasPassword: !!emailPass,
+      passwordLength: emailPass ? emailPass.length : 0
     });
     
-    if (!emailConfig.pass) {
-      console.error('❌ EMAIL_PASS is missing in environment variables!');
+    if (!emailUser || !emailPass) {
+      console.warn('⚠️ EMAIL_USER or EMAIL_PASS not set - using simulation mode');
+      this.transporter = null;
+      return;
     }
     
     try {
+      // Use Gmail directly (not SMTP localhost)
       this.transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT,
-        secure: process.env.EMAIL_SECURE === 'true',
+        service: 'gmail',
         auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS  // USING YOUR VARIABLE NAME
-        },
-        pool: true,
-        maxConnections: 5,
-        maxMessages: 100,
-        // For debugging
-        logger: true,
-        debug: true,
-        // Additional security for Gmail
-        tls: {
-          rejectUnauthorized: false
+          user: emailUser,
+          pass: emailPass.replace(/\s+/g, '')  // Remove spaces
         }
       });
-
-      // Verify connection configuration
-      this.transporter.verify(function(error, success) {
-        if (error) {
-          console.error('❌ Email transporter verification failed:', error.message);
-          console.error('❌ Check if EMAIL_PASS is correct in .env file');
-        } else {
-          console.log('✅ Email transporter is ready to send messages');
+      
+      console.log('✅ GroupEmailService using Gmail');
+      
+      // Verify connection (async, non-blocking)
+      setTimeout(async () => {
+        try {
+          await this.transporter.verify();
+          console.log('✅ GroupEmailService Gmail connection verified');
+        } catch (error) {
+          console.warn('⚠️ GroupEmailService Gmail verification failed:', error.message);
+          console.log('📧 GroupEmailService will use simulation mode');
+          this.transporter = null;
         }
-      });
+      }, 1000);
+      
     } catch (error) {
-      console.error('❌ Failed to create email transporter:', error.message);
+      console.error('❌ Failed to create GroupEmailService transporter:', error.message);
+      this.transporter = null;
     }
   }
 
   async sendGroupInvitationEmail(recipientEmail, invitationData) {
-    console.log('📧 [sendGroupInvitationEmail] Starting...');
-    console.log('📋 Recipient:', recipientEmail);
-    console.log('📋 Data keys:', Object.keys(invitationData));
+    console.log('\n📧 [GroupEmailService] Sending invitation...');
+    console.log('📋 To:', recipientEmail);
+    console.log('📋 From:', process.env.EMAIL_USER || 'simulation');
+    
+    // Simulation mode if no transporter
+    if (!this.transporter) {
+      console.log('📧 [SIMULATION] Group invitation email would be sent');
+      console.log('📧 [SIMULATION] Recipient:', recipientEmail);
+      console.log('📧 [SIMULATION] Inviter:', invitationData.inviterName);
+      console.log('📧 [SIMULATION] Group:', invitationData.groupName);
+      return {
+        success: true,
+        simulated: true,
+        message: 'Email simulation mode - check console for details'
+      };
+    }
     
     try {
       const { 
@@ -96,17 +96,16 @@ class GroupEmailService {
         return { success: false, error: 'Invalid email address' };
       }
       
-      const invitationLink = `${process.env.FRONTEND_URL}/invitations/${invitationId}/respond`;
-      const tripPreviewLink = `${process.env.FRONTEND_URL}/groups/${groupId}`;
+      const invitationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/invitations/${invitationId}/respond`;
+      const tripPreviewLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/groups/${groupId}`;
       
       console.log('🔗 Generated links:', { 
         invitationLink, 
-        tripPreviewLink,
-        frontendUrl: process.env.FRONTEND_URL
+        tripPreviewLink
       });
       
       const mailOptions = {
-        from: `"Travel-Friend ✈️" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+        from: `"Traveler Friend" <${process.env.EMAIL_USER}>`,
         to: recipientEmail,
         subject: `🎉 ${inviterName} invited you to join "${destination}" trip!`,
         html: `
@@ -117,7 +116,6 @@ class GroupEmailService {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Trip Invitation</title>
             <style>
-              /* Email styles here - same as before */
               body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
               .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; }
               .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
@@ -134,7 +132,7 @@ class GroupEmailService {
               </div>
               <div class="content">
                 <p>Hello!</p>
-                <p>You've been invited to join a trip group on Travel-Friend. Here are the details:</p>
+                <p>You've been invited to join a trip group on Traveler Friend. Here are the details:</p>
                 
                 <div class="trip-info">
                   <h2>${destination}</h2>
@@ -165,7 +163,6 @@ class GroupEmailService {
           </body>
           </html>
         `,
-        // Text version for email clients that don't support HTML
         text: `
           Trip Invitation from ${inviterName}
           
@@ -182,19 +179,15 @@ class GroupEmailService {
           
           This invitation expires in 7 days.
           
-          Travel-Friend Team
+          Traveler Friend Team
         `
       };
 
-      console.log('📤 Sending email to:', recipientEmail);
-      console.log('📤 From:', mailOptions.from);
-      console.log('📤 Subject:', mailOptions.subject);
-      
+      console.log('📤 Sending group invitation via Gmail...');
       const info = await this.transporter.sendMail(mailOptions);
       
-      console.log('✅ Email sent successfully!');
+      console.log('✅ Group invitation email sent!');
       console.log('📨 Message ID:', info.messageId);
-      console.log('👤 Accepted recipients:', info.accepted);
       
       return { 
         success: true, 
@@ -205,35 +198,30 @@ class GroupEmailService {
       
     } catch (error) {
       console.error('❌ Error sending group invitation email:', error.message);
-      console.error('❌ Error code:', error.code);
-      console.error('❌ Error command:', error.command);
-      
-      // Detailed error analysis
-      if (error.code === 'EAUTH') {
-        console.error('❌ Authentication failed!');
-        console.error('❌ Check if:');
-        console.error('   1. EMAIL_USER is correct');
-        console.error('   2. EMAIL_PASS is correct (app password for Gmail)');
-        console.error('   3. 2-Step Verification is enabled in Google account');
-      } else if (error.code === 'ECONNECTION') {
-        console.error('❌ Connection failed! Check network/firewall.');
-      }
       
       return { 
         success: false, 
         error: error.message,
         emailSent: false,
-        details: {
-          code: error.code,
-          command: error.command
-        }
+        simulated: true
       };
     }
   }
 
   async sendInvitationResponseEmail(inviterEmail, responseData) {
-    console.log('📧 [sendInvitationResponseEmail] Starting...');
-    console.log('📋 Recipient:', inviterEmail);
+    console.log('\n📧 [GroupEmailService] Sending response...');
+    console.log('📋 To:', inviterEmail);
+    
+    // Simulation mode if no transporter
+    if (!this.transporter) {
+      console.log('📧 [SIMULATION] Response email would be sent to:', inviterEmail);
+      console.log('📧 [SIMULATION] Status:', responseData.status);
+      return {
+        success: true,
+        simulated: true,
+        message: 'Email simulation mode'
+      };
+    }
     
     try {
       const { inviteeName, groupName, destination, status, groupId } = responseData;
@@ -243,10 +231,10 @@ class GroupEmailService {
         return { success: false, error: 'No inviter email' };
       }
       
-      const groupLink = `${process.env.FRONTEND_URL}/groups/${groupId}`;
+      const groupLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/groups/${groupId}`;
       
       const mailOptions = {
-        from: `"Travel-Friend ✈️" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+        from: `"Traveler Friend" <${process.env.EMAIL_USER}>`,
         to: inviterEmail,
         subject: `${status === 'accepted' ? '✅' : '❌'} ${inviteeName} ${status === 'accepted' ? 'accepted' : 'declined'} your trip invitation`,
         html: `
@@ -286,13 +274,22 @@ class GroupEmailService {
       };
 
       const info = await this.transporter.sendMail(mailOptions);
-      console.log(`📧 Response email sent to ${inviterEmail}`);
+      console.log(`✅ Response email sent to ${inviterEmail}`);
       return { success: true, messageId: info.messageId, emailSent: true };
       
     } catch (error) {
       console.error('❌ Error sending response email:', error.message);
       return { success: false, error: error.message, emailSent: false };
     }
+  }
+  
+  // Get service status
+  getStatus() {
+    return {
+      hasTransporter: !!this.transporter,
+      mode: this.transporter ? 'GMAIL' : 'SIMULATION',
+      emailUser: process.env.EMAIL_USER ? process.env.EMAIL_USER.substring(0, 3) + '***' : 'Not set'
+    };
   }
 }
 
