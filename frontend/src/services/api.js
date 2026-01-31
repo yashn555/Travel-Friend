@@ -1,4 +1,4 @@
-// src/services/api.js
+// src/services/api.js - UPDATED
 import axios from 'axios';
 
 // ============================================
@@ -24,25 +24,28 @@ if (!baseURL) {
   }
 }
 
+// FORCE CORRECT URL IN PRODUCTION
+if (isProduction) {
+  // Ensure production URL includes /api
+  if (!baseURL.includes('/api')) {
+    baseURL = baseURL + '/api';
+    console.log('🔧 Force-added /api to production URL:', baseURL);
+  }
+}
+
 // Ensure no trailing slash
 if (baseURL.endsWith('/')) {
   baseURL = baseURL.slice(0, -1);
 }
 
-// Check if /api needs to be added
-let API_URL = baseURL;
-if (!API_URL.includes('/api')) {
-  API_URL = API_URL + '/api';
-}
-
-console.log('🚀 Final API Base URL:', API_URL);
+console.log('🚀 Final API Base URL:', baseURL);
 
 // ============================================
 // AXIOS INSTANCE CONFIGURATION
 // ============================================
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: baseURL, // Use the corrected baseURL
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -80,7 +83,7 @@ api.interceptors.request.use(
 );
 
 // ============================================
-// RESPONSE INTERCEPTOR
+// RESPONSE INTERCEPTOR - ENHANCED
 // ============================================
 
 api.interceptors.response.use(
@@ -120,6 +123,18 @@ api.interceptors.response.use(
       }
     }
     
+    // Handle 404 - Try alternative URL pattern for auth endpoints
+    if (error.response?.status === 404 && originalRequest.url.includes('/auth/')) {
+      console.log('🔄 404 on auth endpoint, checking configuration...');
+      
+      // Show helpful debug info
+      console.log('🔍 Current API Configuration:', {
+        baseURL: api.defaults.baseURL,
+        fullURL: originalRequest.baseURL + originalRequest.url,
+        expectedURL: 'https://travel-friend-backend.onrender.com/api/auth/login'
+      });
+    }
+    
     // Handle network errors
     if (!error.response) {
       console.error('🌐 Network error - Check your internet connection');
@@ -130,18 +145,181 @@ api.interceptors.response.use(
 );
 
 // ============================================
-// AUTH API FUNCTIONS
+// AUTH API FUNCTIONS - ENHANCED
 // ============================================
 
 export const registerUser = (data) => api.post('/auth/register', data).then(res => res.data);
+
 export const verifyOTP = (userId, otp) => api.post('/auth/verify-otp', { userId, otp }).then(res => res.data);
+
 export const resendOTP = (userId) => api.post('/auth/resend-otp', { userId }).then(res => res.data);
-export const loginUser = (credentials) => api.post('/auth/login', credentials).then(res => res.data);
+
+// ENHANCED loginUser with better error handling
+export const loginUser = async (credentials) => {
+  console.log('🔑 Login attempt for:', credentials.email);
+  console.log('🌐 Using baseURL:', api.defaults.baseURL);
+  
+  try {
+    // First, let's test if the endpoint exists
+    console.log('🔍 Testing connection...');
+    
+    const response = await api.post('/auth/login', credentials);
+    
+    console.log('✅ Login response status:', response.status);
+    console.log('📦 Response data:', response.data);
+    
+    // Handle response structure (direct token or nested in data)
+    const responseData = response.data;
+    
+    let token, user;
+    
+    if (responseData.token) {
+      // Direct structure: { success: true, token: "...", user: {...} }
+      token = responseData.token;
+      user = responseData.user;
+    } else if (responseData.data && responseData.data.token) {
+      // Nested structure: { success: true, data: { token: "...", user: {...} } }
+      token = responseData.data.token;
+      user = responseData.data.user;
+    } else {
+      console.error('❌ Unexpected response structure:', responseData);
+      throw new Error('Invalid response from server');
+    }
+    
+    // Store authentication data
+    if (token) {
+      localStorage.setItem('token', token);
+      console.log('✅ Token stored successfully');
+    }
+    
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+      console.log('✅ User data stored:', user.email);
+    }
+    
+    return {
+      success: true,
+      token,
+      user
+    };
+    
+  } catch (error) {
+    console.error('❌ Login failed:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      url: error.config?.url
+    });
+    
+    // Provide user-friendly error message
+    let errorMessage = 'Login failed. Please try again.';
+    
+    if (error.response) {
+      switch (error.response.status) {
+        case 400:
+          errorMessage = error.response.data?.message || 'Invalid request data';
+          break;
+        case 401:
+          errorMessage = error.response.data?.message || 'Invalid email or password';
+          break;
+        case 404:
+          errorMessage = 'Login endpoint not found. Please check if backend is running.';
+          console.error('💡 Tip: Make sure REACT_APP_API_URL includes /api in production');
+          break;
+        case 500:
+          errorMessage = 'Server error. Please try again later.';
+          break;
+      }
+    }
+    
+    throw new Error(errorMessage);
+  }
+};
+
 export const getCurrentUser = () => api.get('/auth/me').then(res => res.data);
 export const logoutUser = () => api.get('/auth/logout').then(res => res.data);
 
 // ============================================
-// DASHBOARD API FUNCTIONS
+// BACKEND DIAGNOSTIC FUNCTION
+// ============================================
+
+export const diagnoseBackend = async () => {
+  console.log('🔍 Running backend diagnostics...');
+  
+  const tests = [
+    { name: 'Root endpoint', url: '/' },
+    { name: 'API base', url: '/api' },
+    { name: 'Health check', url: '/health' },
+    { name: 'Auth endpoint', url: '/auth' }
+  ];
+  
+  const results = [];
+  
+  for (const test of tests) {
+    try {
+      // Use base URL without /api for root test
+      let testUrl = test.url;
+      if (test.url === '/' && api.defaults.baseURL.includes('/api')) {
+        // For root endpoint, remove /api temporarily
+        const rootBase = api.defaults.baseURL.replace('/api', '');
+        testUrl = rootBase + test.url;
+      }
+      
+      console.log(`🔄 Testing: ${test.name} (${testUrl})`);
+      
+      const response = await api.get(test.url);
+      results.push({
+        name: test.name,
+        url: testUrl,
+        status: response.status,
+        success: true,
+        data: response.data
+      });
+      console.log(`✅ ${test.name}: ${response.status}`);
+    } catch (error) {
+      results.push({
+        name: test.name,
+        url: test.url,
+        status: error.response?.status || 'No response',
+        success: false,
+        error: error.message
+      });
+      console.log(`❌ ${test.name}: ${error.response?.status || error.message}`);
+    }
+  }
+  
+  return results;
+};
+
+// ============================================
+// WEBSOCKET HELPER FUNCTION
+// ============================================
+
+export const getWebSocketUrl = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  let base = process.env.REACT_APP_API_URL || '';
+  
+  if (!base) {
+    base = isProduction 
+      ? 'https://travel-friend-backend.onrender.com'
+      : 'http://localhost:5000';
+  }
+  
+  // Remove /api suffix for WebSocket
+  base = base.replace('/api', '');
+  
+  // Convert to WebSocket protocol
+  if (base.startsWith('https://')) {
+    return base.replace('https://', 'wss://');
+  } else if (base.startsWith('http://')) {
+    return base.replace('http://', 'ws://');
+  }
+  
+  return base;
+};
+
+// ============================================
+// DASHBOARD API FUNCTIONS (UNCHANGED)
 // ============================================
 
 export const getDashboardData = () => {
@@ -162,7 +340,7 @@ export const searchGroups = (filters) => api.get('/dashboard/groups', { params: 
 export const requestToJoinGroup = (groupId) => api.post(`/dashboard/groups/${groupId}/join`).then(res => res.data);
 
 // ============================================
-// PROFILE API FUNCTIONS
+// PROFILE API FUNCTIONS (UNCHANGED)
 // ============================================
 
 export const getProfile = () => api.get('/dashboard/profile').then(res => res.data);
@@ -172,7 +350,7 @@ export const uploadProfileImage = (formData) => api.post('/dashboard/profile/upl
 }).then(res => res.data);
 
 // ============================================
-// USER PROFILE FUNCTIONS
+// USER PROFILE FUNCTIONS (UNCHANGED)
 // ============================================
 
 export const getUserProfile = (userId) => api.get(`/users/profile/${userId}`).then(res => res.data);
@@ -213,7 +391,7 @@ export const removeFriend = (friendshipId) => api.delete(`/users/friends/${frien
 export const getTripHistory = () => api.get('/profile/trips').then(res => res.data);
 
 // ============================================
-// GROUP API FUNCTIONS
+// GROUP API FUNCTIONS (UNCHANGED)
 // ============================================
 
 export const createGroup = (data) => api.post('/groups/create', data).then(res => res.data);
@@ -225,7 +403,7 @@ export const handleGroupRequest = (groupId, requestId, action) => api.put('/grou
 export const getAllGroups = () => api.get('/groups/all-groups').then(res => res.data);
 
 // ============================================
-// CHAT API FUNCTIONS
+// CHAT API FUNCTIONS (UNCHANGED)
 // ============================================
 
 export const getGroupChat = (groupId) => api.get(`/chat/group/${groupId}`).then(res => res.data);
@@ -253,7 +431,7 @@ export const sendPrivateMessage = async (chatId, text) => {
 };
 
 // ============================================
-// TRIP PLANNING API FUNCTIONS
+// TRIP PLANNING API FUNCTIONS (UNCHANGED)
 // ============================================
 
 export const generateTripPlan = (groupId, prompt) => api.post('/trips/plan', { groupId, prompt }).then(res => res.data);
@@ -268,7 +446,7 @@ export const deleteExpense = (expenseId) => api.delete(`/trips/expenses/${expens
 export const getRouteSuggestions = (groupId, startingCity) => api.get(`/trips/routes/${groupId}`, { params: { startingCity } }).then(res => res.data);
 
 // ============================================
-// UTILITY API FUNCTIONS
+// UTILITY API FUNCTIONS (UNCHANGED)
 // ============================================
 
 export const searchUsers = (query) => api.get(`/users/search?q=${encodeURIComponent(query)}`).then(res => res.data);
@@ -288,7 +466,7 @@ export const getAutoTripSuggestions = (data) => api.post('/auto-trip/suggestions
 export const createAutoTrip = (tripData) => api.post('/auto-trip/create', tripData).then(res => res.data);
 
 // ============================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (UNCHANGED)
 // ============================================
 
 // Check if user is authenticated
