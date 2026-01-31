@@ -30,22 +30,63 @@ const { initAutoComplete } = require('./utils/autoCompleteTrips');
 // Initialize express
 const app = express();
 const server = http.createServer(app);
+
+// ============================================
+// CORS CONFIGURATION - UPDATED
+// ============================================
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, postman)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://travel-friend.onrender.com',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+    
+    // Check if origin is allowed
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // Check for subdomains or variations
+      const originMatch = allowedOrigins.some(allowedOrigin => {
+        return origin.startsWith(allowedOrigin.replace('https://', 'http://')) ||
+               origin.startsWith(allowedOrigin);
+      });
+      
+      if (originMatch) {
+        callback(null, true);
+      } else {
+        console.log('⚠️ CORS blocked origin:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range']
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
+// Socket.io configuration
 const io = socketio(server, {
-  cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? process.env.FRONTEND_URL || 'http://localhost:3000'
-      : 'http://localhost:3000',
-    credentials: true
-  }
+  cors: corsOptions
 });
 
-// Middleware
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? process.env.FRONTEND_URL || 'http://localhost:3000'
-    : 'http://localhost:3000',
-  credentials: true
-}));
+// ============================================
+// MIDDLEWARE
+// ============================================
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload({
@@ -59,7 +100,10 @@ app.use(fileUpload({
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
+// ============================================
+// ROUTES
+// ============================================
+
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/profile', profileRoutes);
@@ -77,17 +121,68 @@ app.use('/api/auto-trip', autoTripRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/expenses', expenseRoutes);
 
+// ============================================
+// ROOT AND INFO ROUTES - ADDED
+// ============================================
+
+// Root route - Welcome message
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: '🚀 Travel Friend Backend API',
+    version: '1.0.0',
+    documentation: 'All API endpoints are under /api/',
+    endpoints: {
+      auth: '/api/auth',
+      dashboard: '/api/dashboard',
+      profile: '/api/profile',
+      groups: '/api/groups',
+      chat: '/api/chat',
+      trips: '/api/trips',
+      users: '/api/users',
+      health: '/api/health'
+    },
+    environment: process.env.NODE_ENV,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// API info route
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Travel Friend API',
+    status: 'Running',
+    baseUrl: req.protocol + '://' + req.get('host') + '/api',
+    endpoints: [
+      { path: '/auth', methods: ['POST', 'GET'], description: 'Authentication endpoints' },
+      { path: '/dashboard', methods: ['GET'], description: 'User dashboard data' },
+      { path: '/profile', methods: ['GET', 'PUT'], description: 'User profile management' },
+      { path: '/groups', methods: ['GET', 'POST', 'PUT', 'DELETE'], description: 'Group management' },
+      { path: '/chat', methods: ['GET', 'POST'], description: 'Chat functionality' },
+      { path: '/trips', methods: ['GET', 'POST', 'PUT', 'DELETE'], description: 'Trip planning' },
+      { path: '/users', methods: ['GET'], description: 'User management' },
+      { path: '/health', methods: ['GET'], description: 'Server health check' }
+    ]
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     message: 'Server is running',
     timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
   });
 });
 
-// Socket.io connection
+// ============================================
+// SOCKET.IO CONNECTION
+// ============================================
+
 io.on('connection', (socket) => {
   console.log('🔌 New WebSocket connection:', socket.id);
 
@@ -120,17 +215,37 @@ io.on('connection', (socket) => {
   });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
+// ============================================
+// ERROR HANDLING
+// ============================================
+
+// 404 handler for undefined routes
+app.use((req, res, next) => {
+  res.status(404).json({
     success: false,
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: 'Route not found',
+    requestedUrl: req.originalUrl,
+    method: req.method,
+    availableEndpoints: '/api',
+    timestamp: new Date().toISOString()
   });
 });
 
-// Connect to MongoDB
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('❌ Server Error:', err.stack);
+  res.status(err.status || 500).json({
+    success: false,
+    message: 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ============================================
+// DATABASE CONNECTION
+// ============================================
+
 const connectDB = async () => {
   try {
     if (!process.env.MONGO_URI) {
@@ -178,7 +293,10 @@ const connectDB = async () => {
   }
 };
 
-// Start server
+// ============================================
+// START SERVER
+// ============================================
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
@@ -190,6 +308,8 @@ const startServer = async () => {
       console.log(`🌐 API URL: http://localhost:${PORT}/api`);
       console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
       console.log(`📊 Database: ${mongoose.connection.readyState === 1 ? '✅ Connected' : '❌ Disconnected'}`);
+      console.log(`🏠 Root endpoint: http://localhost:${PORT}/`);
+      console.log(`❤️  Health check: http://localhost:${PORT}/api/health`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error.message);
@@ -207,6 +327,10 @@ const startServer = async () => {
 };
 
 startServer();
+
+// ============================================
+// PROCESS HANDLERS
+// ============================================
 
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Rejection:', err.message);
