@@ -1,105 +1,42 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import io from 'socket.io-client';
-
-const SocketContext = createContext();
-
-export const useSocket = () => useContext(SocketContext);
-
-export const SocketProvider = ({ children }) => {
-  const [socket, setSocket] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
-
-  useEffect(() => {
-  // Use socket URL without /api
-  const socketUrl = process.env.REACT_APP_API_URL
-    ? process.env.REACT_APP_API_URL.replace('/api', '')
-    : 'http://localhost:5000';
-
-  console.log('🔌 Connecting WebSocket to:', socketUrl);
-
-  const newSocket = io(socketUrl, {
-    withCredentials: true,
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 20000,
-    auth: (cb) => {
-      const token = localStorage.getItem('token');
-      cb({ token });
-    }
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  console.log('🔌 New client connected:', socket.id);
+  
+  // Extract token from handshake
+  const token = socket.handshake.auth.token;
+  
+  // Join group room
+  socket.on('join-group', (groupId) => {
+    socket.join(`group:${groupId}`);
+    console.log(`Client ${socket.id} joined group ${groupId}`);
   });
-
-  setSocket(newSocket);
-
-  newSocket.on('connect', () => {
-    console.log('✅ WebSocket connected:', newSocket.id);
-    setIsConnected(true);
+  
+  // Leave group room
+  socket.on('leave-group', (groupId) => {
+    socket.leave(`group:${groupId}`);
+    console.log(`Client ${socket.id} left group ${groupId}`);
   });
-
-  newSocket.on('disconnect', (reason) => {
-    console.log('❌ WebSocket disconnected:', reason);
-    setIsConnected(false);
+  
+  // Handle messages
+  socket.on('send-message', (data) => {
+    io.to(`group:${data.groupId}`).emit('new-message', {
+      ...data,
+      senderId: socket.id,
+      timestamp: new Date().toISOString()
+    });
   });
-
-  newSocket.on('connect_error', (error) => {
-    console.error('❌ WebSocket connection error:', error.message);
-    setIsConnected(false);
+  
+  // Handle typing indicators
+  socket.on('typing', (data) => {
+    socket.to(`group:${data.groupId}`).emit('user-typing', {
+      userId: data.userId,
+      isTyping: data.isTyping,
+      groupId: data.groupId
+    });
   });
-
-  return () => {
-    if (newSocket) {
-      newSocket.disconnect();
-    }
-  };
-}, []);
-
-  // Function to join a group room
-  const joinGroupRoom = (groupId) => {
-    if (socket && groupId) {
-      socket.emit('join-group', groupId);
-      console.log(`👥 Joined group room: ${groupId}`);
-    }
-  };
-
-  // Function to leave a group room
-  const leaveGroupRoom = (groupId) => {
-    if (socket && groupId) {
-      socket.emit('leave-group', groupId);
-      console.log(`👋 Left group room: ${groupId}`);
-    }
-  };
-
-  // Function to send message
-  const sendMessage = (groupId, message) => {
-    if (socket && groupId && message) {
-      socket.emit('send-message', { groupId, message });
-    }
-  };
-
-  // Function to send typing indicator
-  const sendTyping = (groupId, userId, isTyping) => {
-    if (socket && groupId) {
-      socket.emit('typing', { groupId, userId, isTyping });
-    }
-  };
-
-  const value = {
-    socket,
-    isConnected,
-    joinGroupRoom,
-    leaveGroupRoom,
-    sendMessage,
-    sendTyping,
-    on: socket ? socket.on.bind(socket) : () => {},
-    off: socket ? socket.off.bind(socket) : () => {},
-    emit: socket ? socket.emit.bind(socket) : () => {}
-  };
-
-  return (
-    <SocketContext.Provider value={value}>
-      {children}
-    </SocketContext.Provider>
-  );
-};
+  
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
