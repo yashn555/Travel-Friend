@@ -1,8 +1,9 @@
 // frontend/src/App.jsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { SocketProvider } from './context/SocketContext';
+import { checkAuth } from './redux/slices/authSlice'; // Import checkAuth
 
 // Pages
 import RegisterPage from './pages/auth/RegisterPage';
@@ -31,27 +32,88 @@ import NearbyUsersPage from './pages/nearby/NearbyUsersPage';
 import SuggestTripPage from './pages/trips/SuggestTripPage';
 import ExpenseManagementPage from './pages/ExpenseManagementPage';
 
-
 // ✅ CORRECT IMPORTS - Fix the typo
 import InviteFriendsToTrip from './pages/trips/InviteFriendsToTrip';
 import InvitationResponse from './pages/invitations/InvitationResponse';
 
 // Components
 import Header from './components/layout/Header';
+import LoadingSpinner from './components/common/LoadingSpinner'; // Create this component
 
-// Protected Route
+// Protected Route - UPDATED
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useSelector((state) => state.auth);
+  const { isAuthenticated, loading } = useSelector((state) => state.auth);
+  
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+  
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
-// Public Route
+// Public Route - UPDATED
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated } = useSelector((state) => state.auth);
+  const { isAuthenticated, loading } = useSelector((state) => state.auth);
+  
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+  
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : children;
 };
 
+// Landing Page Component (for "/" route)
+const LandingPage = () => {
+  const { isAuthenticated, loading } = useSelector((state) => state.auth);
+  
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+  
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <Navigate to="/login" replace />;
+};
+
 function App() {
+  const dispatch = useDispatch();
+  const { loading } = useSelector((state) => state.auth);
+  const [appLoading, setAppLoading] = useState(true);
+
+  // Check authentication on app load
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = localStorage.getItem('token');
+      
+      if (token) {
+        try {
+          // Validate the token with server
+          await dispatch(checkAuth()).unwrap();
+          console.log('✅ User authenticated from localStorage');
+        } catch (error) {
+          console.log('❌ Token invalid, clearing storage');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
+      }
+      
+      setAppLoading(false);
+    };
+    
+    initAuth();
+  }, [dispatch]);
+
+  // Show loading spinner while checking auth
+  if (appLoading || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
   return (
     <SocketProvider>
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -59,15 +121,18 @@ function App() {
 
         <main className="container mx-auto px-4 py-8">
           <Routes>
-            {/* Public */}
+            {/* Landing page - handles auth state */}
+            <Route path="/" element={<LandingPage />} />
+
+            {/* Public routes */}
             <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
             <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
             <Route path="/verify-otp" element={<PublicRoute><VerifyOTPPage /></PublicRoute>} />
+            <Route path="/about" element={<SimpleAboutPage />} />
 
-            {/* Protected */}
+            {/* Protected routes */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-            <Route path="/about" element={<SimpleAboutPage />} />
 
             {/* Invite Friends */}
             <Route
@@ -100,33 +165,30 @@ function App() {
             
             <Route path="/nearby-users" element={<ProtectedRoute><NearbyUsersPage /></ProtectedRoute>} />
 
-            <Route path="/groups/:groupId/expenses" element={<ExpenseManagementPage />} />
+            <Route path="/groups/:groupId/expenses" element={<ProtectedRoute><ExpenseManagementPage /></ProtectedRoute>} />
             
             <Route path="/suggest-trip" element={<ProtectedRoute><SuggestTripPage /></ProtectedRoute>} />
-            {/* ✅ FIX THIS ROUTE: Use InvitationResponse, not InvitationResponsePage */}
+            
             <Route 
-  path="/invites" 
-  element={
-    <ProtectedRoute>
-      <InvitesPage />
-    </ProtectedRoute>
-  } 
-/>
+              path="/invites" 
+              element={
+                <ProtectedRoute>
+                  <InvitesPage />
+                </ProtectedRoute>
+              } 
+            />
 
-<Route 
-  path="/invitations/:invitationId/respond" 
-  element={
-    <ProtectedRoute>
-      <InvitationDetails />
-    </ProtectedRoute>
-  } 
-/>
+            <Route 
+              path="/invitations/:invitationId/respond" 
+              element={
+                <ProtectedRoute>
+                  <InvitationDetails />
+                </ProtectedRoute>
+              } 
+            />
 
             {/* Match */}
-            <Route path="/match-travelers" element={<MatchPage />} />
-
-            {/* Default */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/match-travelers" element={<ProtectedRoute><MatchPage /></ProtectedRoute>} />
 
             {/* 404 */}
             <Route

@@ -1,4 +1,3 @@
-// frontend/src/context/SocketContext.jsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
@@ -11,33 +10,50 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Create socket connection
-    const newSocket = io('http://localhost:5000', {
-      withCredentials: true,
-      transports: ['websocket', 'polling']
-    });
+  // Use socket URL without /api
+  const socketUrl = process.env.REACT_APP_API_URL
+    ? process.env.REACT_APP_API_URL.replace('/api', '')
+    : 'http://localhost:5000';
 
-    setSocket(newSocket);
+  console.log('🔌 Connecting WebSocket to:', socketUrl);
 
-    newSocket.on('connect', () => {
-      console.log('🔌 Socket connected:', newSocket.id);
-      setIsConnected(true);
-    });
+  const newSocket = io(socketUrl, {
+    withCredentials: true,
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000,
+    auth: (cb) => {
+      const token = localStorage.getItem('token');
+      cb({ token });
+    }
+  });
 
-    newSocket.on('disconnect', () => {
-      console.log('❌ Socket disconnected');
-      setIsConnected(false);
-    });
+  setSocket(newSocket);
 
-    newSocket.on('connect_error', (error) => {
-      console.error('❌ Socket connection error:', error);
-    });
+  newSocket.on('connect', () => {
+    console.log('✅ WebSocket connected:', newSocket.id);
+    setIsConnected(true);
+  });
 
-    // Cleanup on unmount
-    return () => {
-      newSocket.close();
-    };
-  }, []);
+  newSocket.on('disconnect', (reason) => {
+    console.log('❌ WebSocket disconnected:', reason);
+    setIsConnected(false);
+  });
+
+  newSocket.on('connect_error', (error) => {
+    console.error('❌ WebSocket connection error:', error.message);
+    setIsConnected(false);
+  });
+
+  return () => {
+    if (newSocket) {
+      newSocket.disconnect();
+    }
+  };
+}, []);
 
   // Function to join a group room
   const joinGroupRoom = (groupId) => {
@@ -77,7 +93,8 @@ export const SocketProvider = ({ children }) => {
     sendMessage,
     sendTyping,
     on: socket ? socket.on.bind(socket) : () => {},
-    off: socket ? socket.off.bind(socket) : () => {}
+    off: socket ? socket.off.bind(socket) : () => {},
+    emit: socket ? socket.emit.bind(socket) : () => {}
   };
 
   return (

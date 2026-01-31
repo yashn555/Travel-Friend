@@ -71,5 +71,26 @@ const authSlice = createSlice({
   }
 });
 
+// Add this to your authSlice.js
+export const checkAuth = createAsyncThunk(
+  'auth/checkAuth',
+  async (_, { rejectWithValue }) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No token found');
+      }
+      
+      const response = await api.get('/auth/me');
+      return response.data;
+    } catch (error) {
+      // Clear invalid token
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
 export const { clearError } = authSlice.actions;
 export default authSlice.reducer;
