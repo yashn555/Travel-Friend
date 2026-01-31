@@ -23,6 +23,7 @@ const groupNotificationRoutes = require('./routes/groupNotificationRoutes');
 const userGroupRoutes = require('./routes/userGroupRoutes');
 const nearbyUsersRoutes = require('./routes/nearbyUsers');
 const testRoutes = require('./routes/testRoutes');
+const emailStatusRoutes = require('./routes/emailStatus');
 const autoTripRoutes = require('./routes/autoTripRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const { initAutoComplete } = require('./utils/autoCompleteTrips');
@@ -120,7 +121,7 @@ app.use('/api/nearby-users', nearbyUsersRoutes);
 app.use('/api/auto-trip', autoTripRoutes);
 app.use('/api/test', testRoutes);
 app.use('/api/expenses', expenseRoutes);
-
+app.use('/api/email', emailStatusRoutes);
 // ============================================
 // ROOT AND INFO ROUTES - ADDED
 // ============================================
